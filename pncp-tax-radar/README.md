@@ -113,6 +113,20 @@ resto (achar a licitação, identificar a vencedora, auditar e redigir o recurso
 A busca antiga por anexos (`POST /api/pncp/scan`) continua disponível na API para quem quiser baixar os anexos
 publicados de um conjunto de licitações.
 
+## Modo assistido (no computador)
+
+`tools/baixar_vencedora.py` abre a licitação do Compras.gov numa janela de navegador, tenta abrir a proposta
+vencedora e os anexos, e salva tudo que for baixado em `inbox_editais/compra_<número>/`, onde o robô audita
+sozinho. Se aparecer o "não sou um robô", você resolve na janela: o script não resolve captcha. Se algum clique
+automático falhar (o site muda), ele avisa e você clica; os downloads vão para a pasta do mesmo jeito.
+
+```bash
+.venv/bin/pip install playwright && .venv/bin/python -m playwright install chromium   # uma vez
+.venv/bin/python tools/baixar_vencedora.py "https://cnetmobile.estaleiro.serpro.gov.br/comprasnet-web/public/compras/acompanhamento-compra?compra=..."
+```
+
+Testado numa página que imita a do Compras.gov; no site real os cliques automáticos ainda não foram validados.
+
 ## Pasta monitorada
 
 Cada arquivo ou subpasta de primeiro nível em `inbox_editais/` vira um caso. A pasta é verificada a cada 15 s;
