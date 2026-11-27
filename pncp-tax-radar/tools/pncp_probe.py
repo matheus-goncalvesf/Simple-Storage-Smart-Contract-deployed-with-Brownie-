@@ -135,7 +135,7 @@ def main() -> None:
             if ri.status_code == 200 and ri.json():
                 item = ri.json()[0]
                 report["exemplo_item"] = item
-                rr = client.get(PNCP_BASE + ENDPOINTS["resultados"].format(cnpj=cnpj, ano=ano, sequencial=seq, item=item.get("numeroItem", 1)))
+                rr = client.get(PNCP_BASE + ENDPOINTS["resultados"].format(cnpj=cnpj, ano=ano, sequencial=seq, numeroItem=item.get("numeroItem", 1)))
                 check(f"GET {ENDPOINTS['resultados']}", rr.status_code in (200, 204), f"HTTP {rr.status_code}")
                 if rr.status_code == 200 and rr.json():
                     report["exemplo_resultado"] = rr.json()[0]

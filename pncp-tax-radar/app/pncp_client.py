@@ -28,7 +28,7 @@ ENDPOINTS = {
     "proposta": "/v1/contratacoes/proposta",  # recebendo propostas até dataFinal
     "arquivos": "/v1/orgaos/{cnpj}/compras/{ano}/{sequencial}/arquivos",
     "itens": "/v1/orgaos/{cnpj}/compras/{ano}/{sequencial}/itens",
-    "resultados": "/v1/orgaos/{cnpj}/compras/{ano}/{sequencial}/itens/{item}/resultados",
+    "resultados": "/v1/orgaos/{cnpj}/compras/{ano}/{sequencial}/itens/{numeroItem}/resultados",
 }
 
 MODALIDADES = {
@@ -297,6 +297,6 @@ class PNCPClient:
         return data if isinstance(data, list) else (data or {}).get("data", []) if isinstance(data, dict) else []
 
     async def list_resultados(self, cnpj: str, ano: int, sequencial: int, item: int) -> list[dict]:
-        url = self.pncp_base + ENDPOINTS["resultados"].format(cnpj=cnpj, ano=ano, sequencial=sequencial, item=item)
+        url = self.pncp_base + ENDPOINTS["resultados"].format(cnpj=cnpj, ano=ano, sequencial=sequencial, numeroItem=item)
         data = await self.get_json(url)
         return data if isinstance(data, list) else []
