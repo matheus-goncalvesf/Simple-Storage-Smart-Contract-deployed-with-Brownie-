@@ -528,7 +528,7 @@ def rule_thin_margin(b: CostBlock, m: Margins, block_alerts: list[Alert]) -> lis
     if any(a.severity == Severity.ALTA.value for a in block_alerts):
         return []
     margin = m.lucro + (m.ci or 0.0)
-    if margin / m.price >= THIN_MARGIN:
+    if margin / m.price >= THIN_MARGIN or margin == 0:  # lucro e custos indiretos em branco: modelo não preenchido
         return []
     rule = RULES["R98"]
     lucro_h, ci_h = b.first("lucro"), b.first("ci")
