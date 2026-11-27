@@ -161,6 +161,19 @@ RULES: dict[str, dict[str, str]] = {
             "da alíquota efetiva. Sem comprovação, aplicar as alíquotas nominais e comparar a diferença com o lucro."
         ),
     },
+    "R98": {
+        "title": "Margem quase zero",
+        "legal_basis": RECURSO_BASIS,
+        "explanation": (
+            "Não há erro tributário que derrube sozinho, mas lucro e custos indiretos somados ficam abaixo de 2% do "
+            "preço. Qualquer custo subestimado na planilha (piso salarial, benefício ou adicional da convenção coletiva, "
+            "insumo) maior que essa margem não pode ser absorvido sem aumentar o preço."
+        ),
+        "solution": (
+            "Conferir a planilha contra a convenção coletiva da categoria e o edital, item a item. Achando qualquer "
+            "custo subestimado acima da margem, pedir diligência e a desclassificação por inexequibilidade."
+        ),
+    },
     "R99": {
         "title": "Erros somados superam o lucro declarado",
         "legal_basis": RECURSO_BASIS,

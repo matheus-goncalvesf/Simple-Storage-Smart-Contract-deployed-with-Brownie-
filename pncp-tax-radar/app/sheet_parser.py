@@ -332,16 +332,22 @@ def block_category(block: CostBlock, ctx: CaseContext) -> str | None:
     return ctx.category
 
 
+CNPJ_REGIME = re.compile(r"\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2}\s+(simples nacional|lucro presumido|lucro real)")
+# notas do órgão no modelo ("os tributos estimados consideram Lucro Real; a licitante deverá informar...") não são declaração
+NOT_DECLARATION = re.compile(r"estimad|consider|deve(ra|rao)? informar|licitante|permitir a participacao|maior numero")
+
+
 def detect_regime(text: str, blocks: list[CostBlock]) -> tuple[str | None, str, bool]:
-    norm = normalize(text)
-    m = REGIME_NEAR.search(norm)
-    if m:
-        return REGIME_MAP[m.group("regime")], norm[max(0, m.start() - 20): m.end() + 20], False
-    found = {REGIME_MAP[x.group(0)] for x in REGIME_ANY.finditer(norm)}
+    lines = [ln for ln in normalize_lines(text) if REGIME_ANY.search(ln) and not NOT_DECLARATION.search(ln)]
+    for ln in lines:  # registro da empresa com CNPJ e regime (ex.: relatório do contador)
+        if m := CNPJ_REGIME.search(ln):
+            return REGIME_MAP[m.group(1)], ln[:160], False
+    for ln in lines:
+        if m := REGIME_NEAR.search(ln):
+            return REGIME_MAP[m.group("regime")], ln[:160], False
+    found = {REGIME_MAP[x.group(0)] for ln in lines for x in REGIME_ANY.finditer(ln)}
     if len(found) == 1:
-        regime = found.pop()
-        x = REGIME_ANY.search(norm)
-        return regime, norm[max(0, x.start() - 40): x.end() + 40], False
+        return found.pop(), lines[0][:160], False
     for b in blocks:
         for h in b.hits.get("simples", []):
             if h.rate and h.rate > 0:
@@ -355,11 +361,14 @@ def detect_regime(text: str, blocks: list[CostBlock]) -> tuple[str | None, str, 
     return None, "", False
 
 
+def normalize_lines(text: str) -> list[str]:
+    return [normalize(ln) for ln in (text or "").splitlines() if ln.strip()]
+
+
 def detect_context(documents: list[Document], blocks: list[CostBlock], overrides: dict | None = None) -> CaseContext:
     overrides = {k: v for k, v in (overrides or {}).items() if v and v != "auto"}
-    proposal_names = {b.doc for b in blocks if doc_role(b.doc) != "orgao"} | {
-        d.name for d in documents if PROPOSAL_NAME.search(d.name.rsplit("›", 1)[-1]) and doc_role(d.name) != "orgao"
-    }
+    # tudo que não é documento do órgão pode trazer dados da licitante (proposta, planilha, relatório do contador)
+    proposal_names = {d.name for d in documents if doc_role(d.name) != "orgao"}
     proposal_text = "\n".join(d.text for d in documents if d.name in proposal_names)
     all_text = "\n".join(d.text for d in documents)
     ctx = CaseContext(overrides=overrides)
@@ -380,11 +389,18 @@ def detect_context(documents: list[Document], blocks: list[CostBlock], overrides
         ctx.pregao = re.sub(r"\s+", "", m.group(1))
     if m := CNPJ_RE.search(proposal_text):
         ctx.cnpj = m.group(0)
-    if m := LICITANTE_RE.search(proposal_text):
-        ctx.licitante = _cut_name(m.group(1))
+    names = [_cut_name(m.group(1)) for m in LICITANTE_RE.finditer(proposal_text)]
+    # rótulo vazio seguido de outro rótulo ("Empresa: CNPJ: ...") ou instrução de preenchimento não é nome
+    names = [n for n in names if len(re.sub(r"[^A-Za-zÀ-ÿ]", "", n)) >= 5
+             and not re.match(r"(?i)(cnpj|cpf|c\.n\.p\.j|endere|telefone|e-?mail)\b", n)]
+    corporate = [n for n in names if COMPANY_SUFFIX.search(n)]
+    ctx.licitante = (corporate or names or [None])[0]
     if m := ORGAO_RE.search(all_text):
         ctx.orgao = _cut_name(m.group(1))
     return ctx
+
+
+COMPANY_SUFFIX = re.compile(r"\b(ltda|eireli|s/?a|limitada|me|epp)\.?\s*$", re.I)
 
 
 def _cut_name(text: str) -> str:

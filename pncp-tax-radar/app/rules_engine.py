@@ -518,6 +518,35 @@ def rule_combined(b: CostBlock, m: Margins, block_alerts: list[Alert]) -> list[A
     )]
 
 
+THIN_MARGIN = 0.02  # lucro + custos indiretos abaixo de 2% do preço
+
+
+def rule_thin_margin(b: CostBlock, m: Margins, block_alerts: list[Alert]) -> list[Alert]:
+    """Sem erro tributário que derrube, mas a margem é tão pequena que qualquer custo omitido derruba."""
+    if not m.price or m.lucro is None or m.lucro_estimado or doc_role(b.doc) == "orgao":
+        return []
+    if any(a.severity == Severity.ALTA.value for a in block_alerts):
+        return []
+    margin = m.lucro + (m.ci or 0.0)
+    if margin / m.price >= THIN_MARGIN:
+        return []
+    rule = RULES["R98"]
+    lucro_h, ci_h = b.first("lucro"), b.first("ci")
+    hits = [h for h in (ci_h, lucro_h) if h is not None]
+    return [Alert(
+        rule_id="R98", severity=Severity.MEDIA.value, verdict=Verdict.INDETERMINADO.value,
+        title=f"Margem quase zero: qualquer custo omitido acima de {fmt_money(margin)} por mês derruba a proposta",
+        evidence="\n".join(f"{h.row.location}: {h.row.raw()}" for h in hits),
+        location=hits[0].row.location if hits else b.doc,
+        found=f"Lucro {fmt_money(m.lucro)} + custos indiretos {fmt_money(m.ci or 0)} = {fmt_money(margin)} "
+              f"({fmt_pct(margin / m.price)} do preço de {fmt_money(m.price)})",
+        expected="Margem capaz de absorver ajustes da planilha sem aumentar o preço",
+        technical_explanation=rule["explanation"], legal_basis=rule["legal_basis"], actionable_solution=rule["solution"],
+        doc=b.doc, block=b.title, impact=None, lucro=round(m.lucro, 2), custos_indiretos=None if m.ci is None else round(m.ci, 2),
+        preco=round(m.price, 2),
+    )]
+
+
 def audit_blocks(blocks: list[CostBlock], ctx: CaseContext) -> tuple[list[Alert], list[dict]]:
     alerts: list[Alert] = []
     summaries: list[dict] = []
@@ -532,6 +561,7 @@ def audit_blocks(blocks: list[CostBlock], ctx: CaseContext) -> tuple[list[Alert]
         block_alerts += rule_fgts(b, ctx, m)
         block_alerts += rule_gross_up(b, ctx, m, g)
         block_alerts += rule_combined(b, m, block_alerts)
+        block_alerts += rule_thin_margin(b, m, block_alerts)
         alerts += block_alerts
         summaries.append({
             "title": b.title, "doc": b.doc, "role": doc_role(b.doc), "category": cat,
