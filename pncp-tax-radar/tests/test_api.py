@@ -13,7 +13,7 @@ from test_pipeline import FakeClient
 
 @pytest.fixture
 def api(fx, tmp_path):
-    settings = Settings(data_dir=tmp_path / "data", inbox_dir=tmp_path / "inbox", watch_inbox=False)
+    settings = Settings(data_dir=tmp_path / "data", inbox_dir=tmp_path / "inbox", watch_inbox=False, radar_auto=False)
     app = create_app(settings, client_factory=lambda: FakeClient(fx))
     with TestClient(app) as client:
         yield client, settings

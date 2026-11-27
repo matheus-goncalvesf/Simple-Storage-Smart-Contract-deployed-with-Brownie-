@@ -8,6 +8,7 @@ import io
 import json
 import secrets
 from contextlib import asynccontextmanager
+from dataclasses import asdict
 from datetime import date, datetime
 from pathlib import Path
 from typing import Callable, Literal
@@ -26,6 +27,7 @@ from .legal import REVIEW_NOTICE
 from .models import SEVERITY_RANK
 from .pipeline import JobManager, ScanParams, run_inbox_scan, run_pncp_scan
 from .pncp_client import MODALIDADES, PNCPClient, safe_filename
+from .radar import SEGMENTS, RadarConfig, RadarScheduler, refresh_status, start_radar_job
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
@@ -85,6 +87,40 @@ class ScanRequest(BaseModel):
         return self
 
 
+class RadarConfigRequest(BaseModel):
+    enabled: bool = True
+    interval_hours: float = Field(6, ge=1, le=168)
+    days_back: int = Field(3, ge=1, le=30)
+    segments: list[str] = Field(default_factory=list)
+    ufs: list[str] = Field(default_factory=list)
+    modalidades: list[int] = Field(default_factory=lambda: [6, 4])
+    max_pages: int = Field(20, ge=1, le=100)
+    winner_checks: int = Field(25, ge=0, le=200)
+
+    @field_validator("segments")
+    @classmethod
+    def check_segments(cls, v):
+        bad = [s for s in v if s not in SEGMENTS]
+        if bad or not v:
+            raise ValueError(f"escolha ao menos um segmento válido ({bad})")
+        return v
+
+    @field_validator("ufs")
+    @classmethod
+    def check_ufs(cls, v):
+        v = [u.upper() for u in v]
+        if any(u not in UFS for u in v):
+            raise ValueError("UF inválida")
+        return v
+
+    @field_validator("modalidades")
+    @classmethod
+    def check_modalidades(cls, v):
+        if not v or any(m not in MODALIDADES for m in v):
+            raise ValueError("modalidade inválida")
+        return v
+
+
 def create_app(settings: Settings | None = None, client_factory: Callable[[], PNCPClient] | None = None) -> FastAPI:
     settings = settings or load_settings()
     db = Database(settings.db_path)
@@ -107,7 +143,12 @@ def create_app(settings: Settings | None = None, client_factory: Callable[[], PN
         watcher = InboxWatcher(inbox_has_pending, start_inbox_job, settings.watch_interval) if settings.watch_inbox else None
         if watcher:
             watcher.start()
+        scheduler = RadarScheduler(db, lambda: start_radar_job(jobs, db, client_factory)) if settings.radar_auto else None
+        if scheduler:
+            scheduler.start()
         yield
+        if scheduler:
+            await scheduler.stop()
         if watcher:
             await watcher.stop()
         for job in list(jobs.jobs.values()):
@@ -137,15 +178,7 @@ def create_app(settings: Settings | None = None, client_factory: Callable[[], PN
 
     # ------------------------------------------------------------ auditoria manual
 
-    @app.post("/api/audit/upload")
-    async def upload(
-        files: list[UploadFile] = File(...),
-        regime: str = Form("auto"),
-        categoria: str = Form("auto"),
-        titulo: str = Form(""),
-    ):
-        if regime not in REGIMES or categoria not in CATEGORIAS:
-            raise HTTPException(422, "regime ou categoria inválidos")
+    async def save_uploads(files: list[UploadFile]) -> tuple[Path, list[Path]]:
         folder = settings.uploads_dir / f"{datetime.now():%Y%m%d-%H%M%S}-{secrets.token_hex(3)}"
         folder.mkdir(parents=True)
         paths: list[Path] = []
@@ -165,11 +198,91 @@ def create_app(settings: Settings | None = None, client_factory: Callable[[], PN
             paths.append(target)
         if not paths:
             raise HTTPException(422, "nenhum arquivo enviado")
-        overrides = {"regime": regime, "categoria": categoria}
+        return folder, paths
+
+    def check_overrides(regime: str, categoria: str) -> dict:
+        if regime not in REGIMES or categoria not in CATEGORIAS:
+            raise HTTPException(422, "regime ou categoria inválidos")
+        return {"regime": regime, "categoria": categoria}
+
+    @app.post("/api/audit/upload")
+    async def upload(
+        files: list[UploadFile] = File(...),
+        regime: str = Form("auto"),
+        categoria: str = Form("auto"),
+        titulo: str = Form(""),
+    ):
+        overrides = check_overrides(regime, categoria)
+        folder, paths = await save_uploads(files)
         result = await asyncio.to_thread(
             audit_paths, paths, overrides, title=titulo.strip() or None, source="upload", ref=folder.name
         )
         result["id"] = db.save_audit(result)
+        return result
+
+    # ------------------------------------------------------------ radar de oportunidades
+
+    @app.get("/api/radar")
+    async def radar_status():
+        cfg = RadarConfig.load(db)
+        running = jobs.running("radar")
+        return {
+            "config": asdict(cfg), "segments": {k: v[0] for k, v in SEGMENTS.items()},
+            "last_run": db.setting_get("radar_last_run"), "running_job": running.id if running else None,
+            "auto": settings.radar_auto,
+        }
+
+    @app.put("/api/radar/config")
+    async def radar_config(req: RadarConfigRequest):
+        cfg = RadarConfig(**req.model_dump())
+        cfg.save(db)
+        return asdict(cfg)
+
+    @app.post("/api/radar/scan")
+    async def radar_scan():
+        return start_radar_job(jobs, db, client_factory).snapshot()
+
+    @app.get("/api/opportunities")
+    async def opportunities(status: str | None = None, segmento: str | None = None, uf: str | None = None):
+        now = datetime.now()
+        out = []
+        for opp in db.list_opportunities():
+            refresh_status(opp, now)
+            if status and opp["status"] != status:
+                continue
+            if segmento and segmento not in opp.get("segmentos", []):
+                continue
+            if uf and opp.get("uf") != uf:
+                continue
+            opp.pop("_item", None)
+            out.append(opp)
+        order = {"propostas_abertas": 0, "em_disputa": 1, "resultado": 2, "encerrada": 3}
+        out.sort(key=lambda o: (order.get(o["status"], 9), o.get("data_encerramento") or ""))
+        return out
+
+    @app.post("/api/opportunities/{opp_id:path}/audit")
+    async def opportunity_audit(
+        opp_id: str,
+        files: list[UploadFile] = File(...),
+        regime: str = Form("auto"),
+        categoria: str = Form("auto"),
+    ):
+        opp = db.get_opportunity(opp_id)
+        if not opp:
+            raise HTTPException(404, "oportunidade não encontrada")
+        overrides = check_overrides(regime, categoria)
+        folder, paths = await save_uploads(files)
+        winner = (opp.get("vencedores") or [{}])[0]
+        defaults = {"orgao": opp.get("orgao"), "pregao": opp.get("numero"),
+                    "licitante": winner.get("fornecedor"), "cnpj": winner.get("ni")}
+        meta = {k: v for k, v in opp.items() if k not in ("_item", "audit_ids")}
+        title = f"{opp.get('orgao') or ''} — {(opp.get('objeto') or '')[:100]}"
+        result = await asyncio.to_thread(
+            audit_paths, paths, overrides, title=title, source="upload", ref=folder.name, meta=meta, defaults=defaults,
+        )
+        result["opportunity_id"] = opp_id
+        result["id"] = db.save_audit(result)
+        db.add_opportunity_audit(opp_id, result["id"])
         return result
 
     # ------------------------------------------------------------ pasta monitorada

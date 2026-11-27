@@ -38,6 +38,18 @@ CREATE TABLE IF NOT EXISTS inbox_seen (
     audit_id INTEGER,
     processed_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS opportunities (
+    id TEXT PRIMARY KEY,
+    status TEXT,
+    data_encerramento TEXT,
+    payload TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_opportunities_status ON opportunities(status);
 """
 
 
@@ -157,6 +169,54 @@ class Database:
                 " processed_at = excluded.processed_at",
                 (path, fingerprint, audit_id, _now()),
             )
+
+    # ------------------------------------------------------------ configurações
+
+    def setting_get(self, key: str) -> Any | None:
+        with self._connect() as con:
+            row = con.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+        return json.loads(row["value"]) if row else None
+
+    def setting_put(self, key: str, value: Any) -> None:
+        with self._lock, self._connect() as con:
+            con.execute(
+                "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (key, json.dumps(value, ensure_ascii=False)),
+            )
+
+    # ------------------------------------------------------------ oportunidades (radar)
+
+    def upsert_opportunity(self, opp: dict) -> None:
+        with self._lock, self._connect() as con:
+            con.execute(
+                "INSERT INTO opportunities (id, status, data_encerramento, payload, updated_at) VALUES (?, ?, ?, ?, ?)"
+                " ON CONFLICT(id) DO UPDATE SET status = excluded.status, data_encerramento = excluded.data_encerramento,"
+                " payload = excluded.payload, updated_at = excluded.updated_at",
+                (opp["id"], opp.get("status"), opp.get("data_encerramento"), json.dumps(opp, ensure_ascii=False), _now()),
+            )
+
+    def get_opportunity(self, opp_id: str) -> dict | None:
+        with self._connect() as con:
+            row = con.execute("SELECT payload FROM opportunities WHERE id = ?", (opp_id,)).fetchone()
+        return json.loads(row["payload"]) if row else None
+
+    def list_opportunities(self, *, status: str | None = None, limit: int = 2000) -> list[dict]:
+        sql = "SELECT payload FROM opportunities"
+        args: list[Any] = []
+        if status:
+            sql += " WHERE status = ?"
+            args.append(status)
+        sql += " ORDER BY COALESCE(data_encerramento, '') DESC LIMIT ?"
+        args.append(limit)
+        with self._connect() as con:
+            return [json.loads(r["payload"]) for r in con.execute(sql, args).fetchall()]
+
+    def add_opportunity_audit(self, opp_id: str, audit_id: int) -> None:
+        opp = self.get_opportunity(opp_id)
+        if opp is None:
+            return
+        opp["audit_ids"] = [*(opp.get("audit_ids") or []), audit_id]
+        self.upsert_opportunity(opp)
 
     def inbox_entries(self) -> list[dict]:
         with self._connect() as con:

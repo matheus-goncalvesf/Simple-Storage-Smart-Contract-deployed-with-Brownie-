@@ -20,10 +20,14 @@ def audit_documents(
     source: str = "upload",
     ref: str | None = None,
     meta: dict | None = None,
+    defaults: dict | None = None,
 ) -> dict:
     blocks_by_doc = {d.name: parse_blocks(d) for d in documents if not d.error}
     blocks = [b for bs in blocks_by_doc.values() for b in bs]
     ctx = detect_context(documents, blocks, overrides)
+    for key, value in (defaults or {}).items():
+        if value and not getattr(ctx, key, None):
+            setattr(ctx, key, value)
     alerts, summaries = audit_blocks(blocks, ctx)
 
     alert_dicts = []

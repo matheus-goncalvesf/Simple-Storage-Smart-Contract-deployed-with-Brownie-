@@ -17,16 +17,20 @@ O navegador abre em http://127.0.0.1:8000. Requer Python 3.11+.
 
 ## Fluxo de uso
 
-1. Na sessão, o cliente (2º colocado) manifesta a intenção de recorrer e baixa a proposta e a planilha da
-   vencedora no portal da disputa (Compras.gov, BLL, BEC etc.).
-2. Arraste os arquivos na aba **Auditar arquivos** ou jogue-os na pasta `inbox_editais/`. O edital pode ir junto,
-   como contexto (objeto, órgão, número do pregão).
-3. Em **Resultados**, linhas vermelhas são erros que provavelmente derrubam a proposta; âmbar são erros sanáveis
-   ou que precisam de confirmação.
-4. **Ver erro e evidência**: o que está na planilha × o correto, o impacto em R$ comparado ao lucro declarado e
-   o trecho exato do arquivo (aba, linha, fórmula).
-5. **Ver tese / solução** e **Rascunho de recurso**: textos prontos para revisar e protocolar. O prazo é a
-   intenção imediata na sessão e as razões em 3 dias úteis (Lei 14.133/2021, art. 165).
+1. **Oportunidades**: o radar busca sozinho no PNCP, a cada 6 horas (configurável), licitações dos segmentos
+   escolhidos (limpeza, vigilância, recepção/portaria/copeiragem, terceirização, obras) e mostra situação, prazo das
+   propostas, órgão, valor, vencedor (quando já publicado) e o link da disputa.
+2. **Antes da sessão**: use a lista "Recebendo propostas" para oferecer o serviço às empresas que vão disputar.
+3. **Depois da sessão**: o cliente (2º colocado) baixa a proposta e a planilha da vencedora no portal da disputa.
+   Na licitação, clique em **Auditar planilha da vencedora** e envie os arquivos. O resultado fica ligado à
+   licitação, e o recurso já sai com órgão, número e vencedora preenchidos.
+4. Em **Resultados**, linhas vermelhas são erros que provavelmente derrubam a proposta; âmbar são erros sanáveis
+   ou que precisam de confirmação. **Ver erro e evidência** mostra o que está na planilha × o correto, o impacto em
+   R$ contra o lucro declarado e o trecho exato do arquivo.
+5. **Ver tese / solução** e **Rascunho de recurso** trazem os textos para revisar e protocolar. O prazo é a intenção
+   imediata na sessão e as razões em 3 dias úteis (Lei 14.133/2021, art. 165).
+
+Também dá para auditar arquivos soltos (aba **Auditar arquivos**) ou jogá-los na pasta `inbox_editais/`.
 
 ## Como o robô decide se o erro derruba a proposta
 
@@ -78,34 +82,36 @@ jurisprudência**. Revise com advogado ou contador antes de protocolar e acresce
 - Desoneração da folha (CPRB) não é modelada; por isso, INSS abaixo de 20% em obras fora do Simples não é apontado.
 - O regime da vencedora é detectado pelo texto da proposta ou pela estrutura da planilha. Quando não for, informe-o manualmente no upload.
 
-## Varredura no PNCP
+## Radar e dados públicos
 
-**Atenção:** os endpoints abaixo seguem a documentação pública do PNCP, mas **não foram testados contra a API
-real**, porque o ambiente de desenvolvimento não tinha acesso a `pncp.gov.br`. Antes do primeiro uso, rode na sua
-máquina:
-
-```bash
-.venv/bin/python tools/pncp_probe.py
-```
-
-O script confere os caminhos no OpenAPI oficial, faz requisições reais e grava `data/pncp_probe_report.json`
-com OK/DIVERGENTE por campo. Se algo divergir, ajuste `ENDPOINTS` em `app/pncp_client.py`.
+Os endpoints do PNCP foram conferidos contra a API real em 27/11/2026 com `tools/pncp_probe.py`. Rode o probe de
+novo se algo parar de funcionar.
 
 | Uso | Endpoint |
 |---|---|
-| Contratações publicadas no período | `GET https://pncp.gov.br/api/consulta/v1/contratacoes/publicacao?dataInicial=AAAAMMDD&dataFinal=AAAAMMDD&codigoModalidadeContratacao=6&uf=SP&pagina=1&tamanhoPagina=50` |
-| Contratações atualizadas no período | `GET .../api/consulta/v1/contratacoes/atualizacao` (mesmos parâmetros) |
-| Propostas em aberto | `GET .../api/consulta/v1/contratacoes/proposta?dataFinal=...&codigoModalidadeContratacao=...` |
-| Anexos da compra | `GET https://pncp.gov.br/api/pncp/v1/orgaos/{cnpj}/compras/{ano}/{sequencial}/arquivos` |
-| Itens e vencedores | `GET .../compras/{ano}/{sequencial}/itens` e `.../itens/{numero}/resultados` |
+| Licitações recebendo propostas | `GET https://pncp.gov.br/api/consulta/v1/contratacoes/proposta?dataFinal=AAAAMMDD&codigoModalidadeContratacao=6&pagina=1&tamanhoPagina=50` |
+| Licitações atualizadas no período | `GET .../api/consulta/v1/contratacoes/atualizacao?dataInicial=...&dataFinal=...` (mesmos parâmetros) |
+| Itens e vencedores | `GET https://pncp.gov.br/api/pncp/v1/orgaos/{cnpj}/compras/{ano}/{sequencial}/itens` e `.../itens/{numeroItem}/resultados` |
+| Anexos da compra | `GET .../api/pncp/v1/orgaos/{cnpj}/compras/{ano}/{sequencial}/arquivos` |
 
 Resiliência: no máximo 4 requisições simultâneas, timeout de 10 s para conexão e 30 s para leitura, até 4 novas
-tentativas com espera de 1, 2, 4 e 8 s em HTTP 429/5xx e falha de rede (respeita `Retry-After`). Cada licitação e
-cada anexo falham de forma isolada, e a varredura pode ser parada pela interface. As listas de anexos ficam em
-cache no SQLite por 6 horas.
+tentativas com espera de 1, 2, 4 e 8 s em HTTP 429/5xx e falha de rede (respeita `Retry-After`). Cada consulta falha
+de forma isolada. O radar descarta licitações encerradas há mais de 90 dias.
 
-A planilha da vencedora raramente aparece no PNCP dentro do prazo de recurso. Use a varredura principalmente
-para **prospectar** licitações de terceirização e oferecer o serviço antes da sessão.
+### Por que a planilha da vencedora entra por upload
+
+Medição feita em 27/11/2026:
+
+- Em **100 contratos de terceirização** publicados no PNCP no último mês, só **1** trazia a planilha da vencedora
+  anexada. Os demais arquivos com "proposta" no nome eram modelos em branco do edital ou pareceres.
+- **33 de 43** pregões de terceirização da semana correram no **Compras.gov**, cuja página pública de
+  acompanhamento exige **hCaptcha**. O robô não burla captcha.
+
+Por isso a planilha da vencedora chega pelo cliente (o 2º colocado tem acesso a ela no portal da disputa), e todo o
+resto (achar a licitação, identificar a vencedora, auditar e redigir o recurso) é automático.
+
+A busca antiga por anexos (`POST /api/pncp/scan`) continua disponível na API para quem quiser baixar os anexos
+publicados de um conjunto de licitações.
 
 ## Pasta monitorada
 
@@ -121,6 +127,7 @@ reauditado, e o resultado anterior é substituído.
 | `RADAR_INBOX_DIR` | `./inbox_editais` |
 | `RADAR_WATCH_INBOX` | `1` (use `0` para desligar) |
 | `RADAR_WATCH_INTERVAL` | `15` segundos |
+| `RADAR_AUTO_SCAN` | `1` (use `0` para desligar a busca automática do radar) |
 | `RADAR_PORT` | `8000` |
 
 ## Testes
@@ -141,6 +148,7 @@ pncp-tax-radar/
 │   ├── main.py            # FastAPI: REST, SSE, upload, exportação
 │   ├── pncp_client.py     # cliente assíncrono do PNCP (semáforo, retry, timeouts)
 │   ├── pipeline.py        # jobs com progresso, cancelamento e falha isolada
+│   ├── radar.py           # radar de oportunidades (busca agendada, segmentos, vencedores)
 │   ├── extractor.py       # xlsx/xls/pdf/docx/csv/zip → linhas
 │   ├── formula.py         # avaliador de fórmulas do Excel
 │   ├── sheet_parser.py    # linhas → planilha por posto + contexto (regime, objeto, pregão)

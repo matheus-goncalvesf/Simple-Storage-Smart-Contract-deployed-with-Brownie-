@@ -1,9 +1,7 @@
 """Cliente assíncrono e resiliente da API pública do PNCP.
 
-ATENÇÃO: os caminhos e nomes de campo abaixo seguem a documentação pública do PNCP conhecida até o
-desenvolvimento, mas NÃO foram validados contra a API real (o ambiente de desenvolvimento não tinha
-acesso a pncp.gov.br). Rode `python tools/pncp_probe.py` na sua máquina para conferir e ajuste
-ENDPOINTS se algo tiver mudado. Os campos são lidos de forma defensiva (dict.get).
+Endpoints e campos conferidos contra a API real em 27/11/2026 (tools/pncp_probe.py). Se o PNCP mudar,
+rode o probe de novo e ajuste ENDPOINTS. Os campos são lidos de forma defensiva (dict.get).
 """
 
 from __future__ import annotations

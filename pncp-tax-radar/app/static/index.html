@@ -16,8 +16,8 @@
       <p class="text-xs text-slate-400">Cálculo 100% por regras · sem IA no cálculo · rodando localmente</p>
     </div>
     <nav class="max-w-7xl mx-auto px-4 flex gap-1" id="tabs">
+      <button data-tab="oportunidades" class="tab px-4 py-2 text-sm font-medium rounded-t-md">Oportunidades</button>
       <button data-tab="auditar" class="tab px-4 py-2 text-sm font-medium rounded-t-md">Auditar arquivos</button>
-      <button data-tab="pncp" class="tab px-4 py-2 text-sm font-medium rounded-t-md">Varredura PNCP</button>
       <button data-tab="resultados" class="tab px-4 py-2 text-sm font-medium rounded-t-md">
         Resultados <span id="badge-alta" class="hidden ml-1 rounded-full bg-red-600 text-white text-xs px-2 py-0.5"></span>
       </button>
@@ -73,58 +73,43 @@
       </div>
     </section>
 
-    <!-- ============================================================ PNCP -->
-    <section id="tab-pncp" class="tab-panel hidden space-y-6">
-      <div class="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
-        <p class="font-semibold">Antes do primeiro uso</p>
-        <p>Os endpoints do PNCP não puderam ser testados no ambiente onde o robô foi construído. Rode <code class="bg-amber-100 px-1 rounded">python tools/pncp_probe.py</code> na sua máquina para conferir.</p>
-        <p class="mt-1">A planilha da vencedora raramente é publicada no PNCP dentro do prazo de recurso. Use a varredura sobretudo para prospectar licitações; para auditar a vencedora, prefira o upload do arquivo baixado no portal da disputa.</p>
+    <!-- ============================================================ OPORTUNIDADES -->
+    <section id="tab-oportunidades" class="tab-panel hidden space-y-4">
+      <div class="bg-white rounded-xl shadow-sm p-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 class="text-lg font-semibold">Radar de licitações</h2>
+          <p id="radar-info" class="text-sm text-slate-500"></p>
+        </div>
+        <div class="flex gap-2">
+          <button id="btn-radar-config" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50">Configurar</button>
+          <button id="btn-radar-scan" class="rounded-md bg-blue-600 px-4 py-1.5 text-sm text-white font-medium hover:bg-blue-700 disabled:opacity-50">Buscar agora</button>
+        </div>
+        <div id="radar-progress" class="hidden w-full">
+          <div class="h-2 w-full rounded-full bg-slate-200 overflow-hidden"><div id="radar-bar" class="h-2 bg-blue-600 transition-all" style="width:0%"></div></div>
+          <p id="radar-stage" class="mt-1 text-xs text-slate-600"></p>
+        </div>
       </div>
-      <form id="scan-form" class="bg-white rounded-xl shadow-sm p-6 grid md:grid-cols-4 gap-4">
-        <label class="block text-sm"><span class="font-medium">Data inicial</span>
-          <input name="data_inicial" type="date" required class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"></label>
-        <label class="block text-sm"><span class="font-medium">Data final</span>
-          <input name="data_final" type="date" required class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"></label>
-        <label class="block text-sm"><span class="font-medium">UF</span>
-          <select name="uf" id="scan-uf" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 bg-white"></select></label>
-        <label class="block text-sm"><span class="font-medium">Modalidade</span>
-          <select name="modalidades" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 bg-white">
-            <option value="6">Pregão Eletrônico</option>
-            <option value="4">Concorrência Eletrônica</option>
-            <option value="6,4">Pregão + Concorrência Eletrônica</option>
-            <option value="8">Dispensa de Licitação</option>
-          </select></label>
-        <label class="block text-sm md:col-span-2"><span class="font-medium">Palavras-chave no objeto (separadas por vírgula)</span>
-          <input name="keywords" type="text" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
-                 value="limpeza, conservação, vigilância, recepção, copeiragem, portaria, terceirização"></label>
-        <label class="block text-sm"><span class="font-medium">Consulta</span>
-          <select name="endpoint" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 bg-white">
-            <option value="publicacao">Publicadas no período</option>
-            <option value="atualizacao">Atualizadas no período (ex.: resultado)</option>
-            <option value="proposta">Com propostas abertas</option>
-          </select></label>
-        <div class="grid grid-cols-2 gap-2">
-          <label class="block text-sm"><span class="font-medium">Limite</span>
-            <input name="limite" type="number" min="1" max="200" value="20" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"></label>
-          <label class="block text-sm"><span class="font-medium">Anexos/licit.</span>
-            <input name="max_files" type="number" min="1" max="40" value="12" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"></label>
-        </div>
-        <div class="md:col-span-4 flex items-center gap-3">
-          <button type="submit" id="btn-scan" class="rounded-md bg-blue-600 px-5 py-2 text-white font-medium hover:bg-blue-700 disabled:opacity-50">Iniciar varredura</button>
-          <span id="scan-error" class="text-sm text-red-600"></span>
-        </div>
-      </form>
-
-      <div id="progress-card" class="hidden bg-white rounded-xl shadow-sm p-6">
-        <div class="flex items-center justify-between gap-3">
-          <p id="progress-stage" class="font-medium"></p>
-          <button id="btn-cancel" class="rounded-md bg-red-600 px-4 py-1.5 text-sm text-white font-medium hover:bg-red-700 disabled:opacity-50">Parar</button>
-        </div>
-        <div class="mt-3 h-3 w-full rounded-full bg-slate-200 overflow-hidden">
-          <div id="progress-bar" class="h-3 bg-blue-600 transition-all" style="width:0%"></div>
-        </div>
-        <p id="progress-counts" class="mt-2 text-sm text-slate-600"></p>
-        <ul id="progress-log" class="mt-3 max-h-64 overflow-y-auto text-sm space-y-1"></ul>
+      <div class="bg-white rounded-xl shadow-sm p-4 flex flex-wrap items-center gap-3">
+        <select id="o-status" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm bg-white">
+          <option value="">Todas as situações</option>
+          <option value="propostas_abertas">Recebendo propostas</option>
+          <option value="em_disputa">Sessão realizada / em julgamento</option>
+          <option value="resultado">Resultado publicado</option>
+          <option value="encerrada">Suspensa, revogada ou fracassada</option>
+        </select>
+        <select id="o-seg" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm bg-white"></select>
+        <select id="o-uf" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm bg-white"></select>
+        <input id="o-search" type="search" placeholder="Buscar órgão, objeto, vencedor..." class="rounded-md border border-slate-300 px-3 py-1.5 text-sm flex-1 min-w-48">
+        <span id="o-count" class="text-sm text-slate-500"></span>
+      </div>
+      <div class="bg-white rounded-xl shadow-sm overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="text-left text-slate-500 border-b bg-slate-50">
+            <tr><th class="py-2 px-3">Situação</th><th class="px-3">Propostas até</th><th class="px-3">Órgão</th><th class="px-3">Objeto</th><th class="px-3">Valor estimado</th><th class="px-3">Vencedor</th><th class="px-3"></th></tr>
+          </thead>
+          <tbody id="opp-body"></tbody>
+        </table>
+        <p id="opp-empty" class="hidden p-6 text-center text-slate-500">Nenhuma licitação ainda. Clique em “Buscar agora”.</p>
       </div>
     </section>
 
@@ -247,6 +232,7 @@ function showTab(name) {
   $$(".tab-panel").forEach((p) => p.classList.toggle("hidden", p.id !== `tab-${name}`));
   if (name === "resultados") loadAudits();
   if (name === "auditar") loadInbox();
+  if (name === "oportunidades") loadOpportunities();
 }
 $$(".tab").forEach((b) => b.addEventListener("click", () => showTab(b.dataset.tab)));
 
@@ -418,37 +404,163 @@ function logLine(ev) {
   return null;
 }
 
-$("#scan-form").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const f = new FormData(e.target);
-  const body = {
-    data_inicial: f.get("data_inicial"), data_final: f.get("data_final"),
-    uf: f.get("uf") || null, keywords: f.get("keywords"),
-    modalidades: f.get("modalidades").split(",").map(Number), endpoint: f.get("endpoint"),
-    limite: Number(f.get("limite")), max_files: Number(f.get("max_files")),
-  };
-  $("#scan-error").textContent = "";
-  try {
-    const job = await api("/api/pncp/scan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-    state.scanJob = job.id;
-    $("#btn-scan").disabled = true;
-    $("#btn-cancel").disabled = false;
-    $("#progress-card").classList.remove("hidden");
-    $("#progress-log").replaceChildren();
-    watchJob(job.id, (ev) => {
-      $("#progress-stage").textContent = ev.stage;
-      const pct = ev.total ? Math.round((ev.done / ev.total) * 100) : 0;
-      $("#progress-bar").style.width = `${["done"].includes(ev.type) ? 100 : pct}%`;
-      $("#progress-counts").textContent = `Processando ${ev.done}/${ev.total || "?"} · ${ev.failures} falha(s) isolada(s)`;
-      const line = logLine(ev);
-      if (line) $("#progress-log").prepend(line);
-      if (["done", "cancelled", "error"].includes(ev.type)) { $("#btn-scan").disabled = false; $("#btn-cancel").disabled = true; }
-    });
-  } catch (err) { $("#scan-error").textContent = `Erro: ${err.message}`; }
+// ------------------------------------------------------------ oportunidades (radar)
+const STATUS_BADGE = {
+  propostas_abertas: "bg-emerald-100 text-emerald-800",
+  em_disputa: "bg-amber-100 text-amber-800",
+  resultado: "bg-blue-100 text-blue-800",
+  encerrada: "bg-slate-100 text-slate-500",
+};
+const MODALIDADES_RADAR = [[6, "Pregão Eletrônico"], [4, "Concorrência Eletrônica"], [8, "Dispensa de Licitação"]];
+const fmtDay = (iso) => (iso ? new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : "—");
+
+async function initOpportunities() {
+  state.radar = await api("/api/radar");
+  const segs = Object.entries(state.radar.segments);
+  $("#o-seg").replaceChildren(h("option", { value: "" }, "Todos os segmentos"), ...segs.map(([k, l]) => h("option", { value: k }, l)));
+  $("#o-uf").replaceChildren(h("option", { value: "" }, "Todas as UFs"), ...state.meta.ufs.map((u) => h("option", { value: u }, u)));
+  renderRadarInfo();
+  if (state.radar.running_job) followRadarJob(state.radar.running_job);
+}
+
+function renderRadarInfo() {
+  const r = state.radar;
+  const last = r.last_run;
+  const parts = [];
+  parts.push(last ? `Última busca: ${fmtDay(last.at)}${last.found !== undefined ? ` · ${last.found} licitações (${last.new} novas)` : " · em andamento"}` : "Ainda não buscou.");
+  parts.push(r.config.enabled && r.auto ? `Busca automática a cada ${r.config.interval_hours} h` : "Busca automática desligada");
+  const segs = r.config.segments.map((s) => r.segments[s]).join(", ");
+  parts.push(`Segmentos: ${segs}`);
+  parts.push(r.config.ufs.length ? `UFs: ${r.config.ufs.join(", ")}` : "Todo o Brasil");
+  $("#radar-info").textContent = parts.join(" · ");
+}
+
+function followRadarJob(jobId) {
+  $("#btn-radar-scan").disabled = true;
+  $("#radar-progress").classList.remove("hidden");
+  watchJob(jobId, (ev) => {
+    const pct = ev.total ? Math.round((ev.done / ev.total) * 100) : 5;
+    $("#radar-bar").style.width = `${ev.type === "done" ? 100 : pct}%`;
+    $("#radar-stage").textContent = ev.stage + (ev.failures ? ` · ${ev.failures} consulta(s) com falha isolada` : "");
+    if (["done", "cancelled", "error"].includes(ev.type)) {
+      $("#btn-radar-scan").disabled = false;
+      api("/api/radar").then((r) => { state.radar = r; renderRadarInfo(); });
+      loadOpportunities();
+    }
+  });
+}
+
+$("#btn-radar-scan").addEventListener("click", async () => {
+  const job = await api("/api/radar/scan", { method: "POST" });
+  followRadarJob(job.id);
 });
-$("#btn-cancel").addEventListener("click", async () => {
-  if (state.scanJob) await api(`/api/jobs/${state.scanJob}/cancel`, { method: "POST" });
-});
+
+async function loadOpportunities() {
+  state.opps = await api("/api/opportunities");
+  renderOpportunities();
+}
+
+function renderOpportunities() {
+  const st = $("#o-status").value, seg = $("#o-seg").value, uf = $("#o-uf").value;
+  const q = $("#o-search").value.trim().toLowerCase();
+  const visible = (state.opps || []).filter((o) =>
+    (!st || o.status === st) && (!seg || o.segmentos.includes(seg)) && (!uf || o.uf === uf) &&
+    (!q || [o.orgao, o.objeto, o.municipio, ...(o.vencedores || []).map((v) => v.fornecedor)].join(" ").toLowerCase().includes(q)));
+  $("#o-count").textContent = `${visible.length} de ${(state.opps || []).length}`;
+  const rows = visible.map((o) => {
+    const v = (o.vencedores || [])[0];
+    return h("tr", { class: "border-b align-top hover:bg-slate-50" },
+      h("td", { class: "py-2 px-3" }, h("span", { class: `inline-block rounded px-2 py-0.5 text-xs font-semibold ${STATUS_BADGE[o.status] || ""}` }, o.status_label)),
+      h("td", { class: "px-3 whitespace-nowrap text-xs" }, fmtDay(o.data_encerramento)),
+      h("td", { class: "px-3" }, h("div", { class: "font-medium" }, o.orgao || "—"), h("div", { class: "text-xs text-slate-500" }, [o.municipio, o.uf].filter(Boolean).join(" / "), o.numero ? ` · nº ${o.numero}` : "")),
+      h("td", { class: "px-3 min-w-64 max-w-md" }, h("div", { class: "line-clamp-3", title: o.objeto || "" }, o.objeto || ""),
+        h("div", { class: "mt-1 flex flex-wrap gap-1" }, o.segmentos.map((s) => h("span", { class: "rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600" }, state.radar.segments[s] || s)))),
+      h("td", { class: "px-3 whitespace-nowrap" }, money(o.valor_estimado)),
+      h("td", { class: "px-3 text-xs" }, v ? [h("div", { class: "font-medium" }, v.fornecedor || "—"), h("div", { class: "text-slate-500" }, v.ni || ""), v.valor ? h("div", {}, money(v.valor)) : null] : "—"),
+      h("td", { class: "px-3 py-2 space-y-1 text-xs whitespace-nowrap" },
+        o.link_origem ? h("a", { href: o.link_origem, target: "_blank", rel: "noopener noreferrer", class: "block text-blue-700 hover:underline" }, `Abrir disputa (${o.portal})`) : null,
+        o.pncp_url ? h("a", { href: o.pncp_url, target: "_blank", rel: "noopener noreferrer", class: "block text-blue-700 hover:underline" }, "Ver no PNCP") : null,
+        h("button", { class: "block rounded-md bg-red-600 px-2 py-1 text-white font-medium hover:bg-red-700", onclick: () => openOppAudit(o), title: "Enviar a planilha da vencedora para auditoria" }, "Auditar vencedora"),
+        (o.audit_ids || []).length ? h("button", { class: "block text-blue-700 hover:underline", onclick: () => { o.audit_ids.forEach((id) => state.expanded.add(id)); showTab("resultados"); } }, `Ver auditoria (${o.audit_ids.length})`) : null));
+  });
+  $("#opp-body").replaceChildren(...rows);
+  $("#opp-empty").classList.toggle("hidden", visible.length > 0);
+}
+["#o-status", "#o-seg", "#o-uf"].forEach((s) => $(s).addEventListener("change", renderOpportunities));
+$("#o-search").addEventListener("input", renderOpportunities);
+
+function openOppAudit(o) {
+  const input = h("input", { type: "file", multiple: true, accept: ".xlsx,.xlsm,.xls,.pdf,.docx,.csv,.txt,.zip", class: "block w-full text-sm" });
+  const opts = (entries) => entries.map(([v, l]) => h("option", { value: v }, l));
+  const regime = h("select", { class: "mt-1 w-full rounded-md border border-slate-300 px-3 py-2 bg-white" }, opts(Object.entries(state.meta.regimes)));
+  const categoria = h("select", { class: "mt-1 w-full rounded-md border border-slate-300 px-3 py-2 bg-white" }, opts(Object.entries(state.meta.categorias)));
+  const status = h("span", { class: "text-sm text-slate-500" });
+  const btn = h("button", { class: "rounded-md bg-blue-600 px-5 py-2 text-white font-medium hover:bg-blue-700 disabled:opacity-50" }, "Auditar");
+  btn.addEventListener("click", async () => {
+    if (!input.files.length) { status.textContent = "Escolha ao menos um arquivo."; return; }
+    const fd = new FormData();
+    [...input.files].forEach((f) => fd.append("files", f, f.name));
+    fd.append("regime", regime.value);
+    fd.append("categoria", categoria.value);
+    btn.disabled = true; status.textContent = "Auditando...";
+    try {
+      const audit = await api(`/api/opportunities/${o.id}/audit`, { method: "POST", body: fd });
+      closeModal();
+      state.expanded.add(audit.id);
+      loadOpportunities();
+      showTab("resultados");
+    } catch (err) { status.textContent = `Erro: ${err.message}`; btn.disabled = false; }
+  });
+  openModal(h("div", {}, h("h3", { class: "text-lg font-semibold" }, "Auditar planilha da vencedora"), h("p", { class: "text-xs text-slate-500" }, `${o.orgao || ""} — ${(o.objeto || "").slice(0, 120)}`)), [
+    h("p", { class: "text-sm text-slate-600" }, "Envie a proposta e a planilha de custos da vencedora, baixadas no portal da disputa. O resultado fica ligado a esta licitação e o recurso já sai com órgão, número e vencedora preenchidos."),
+    input,
+    h("div", { class: "grid md:grid-cols-2 gap-3" },
+      h("label", { class: "block text-sm" }, h("span", { class: "font-medium" }, "Regime da vencedora"), regime),
+      h("label", { class: "block text-sm" }, h("span", { class: "font-medium" }, "Tipo de serviço"), categoria)),
+    h("div", { class: "flex items-center gap-3" }, btn, status),
+  ]);
+}
+
+function openRadarConfig() {
+  const cfg = state.radar.config;
+  const check = (name, value, label, checked) => h("label", { class: "flex items-center gap-2 text-sm" },
+    h("input", { type: "checkbox", name, value, checked: checked || null, class: "h-4 w-4" }), label);
+  const form = h("form", { class: "space-y-4" },
+    h("fieldset", {}, h("legend", { class: "font-medium mb-1" }, "Segmentos"),
+      h("div", { class: "grid md:grid-cols-2 gap-1" }, Object.entries(state.radar.segments).map(([k, l]) => check("segments", k, l, cfg.segments.includes(k))))),
+    h("fieldset", {}, h("legend", { class: "font-medium mb-1" }, "UFs (nenhuma marcada = Brasil todo)"),
+      h("div", { class: "grid grid-cols-6 md:grid-cols-9 gap-1" }, state.meta.ufs.map((u) => check("ufs", u, u, cfg.ufs.includes(u))))),
+    h("fieldset", {}, h("legend", { class: "font-medium mb-1" }, "Modalidades"),
+      h("div", { class: "flex flex-wrap gap-4" }, MODALIDADES_RADAR.map(([v, l]) => check("modalidades", v, l, cfg.modalidades.includes(v))))),
+    h("div", { class: "grid md:grid-cols-3 gap-3" },
+      h("label", { class: "block text-sm" }, h("span", { class: "font-medium" }, "Buscar a cada"),
+        h("select", { name: "interval_hours", class: "mt-1 w-full rounded-md border border-slate-300 px-3 py-2 bg-white" },
+          [2, 4, 6, 12, 24].map((n) => h("option", { value: n, selected: Number(cfg.interval_hours) === n || null }, `${n} horas`)))),
+      h("label", { class: "block text-sm" }, h("span", { class: "font-medium" }, "Olhar atualizações dos últimos"),
+        h("select", { name: "days_back", class: "mt-1 w-full rounded-md border border-slate-300 px-3 py-2 bg-white" },
+          [1, 3, 7, 15].map((n) => h("option", { value: n, selected: Number(cfg.days_back) === n || null }, `${n} dia(s)`)))),
+      h("label", { class: "flex items-center gap-2 text-sm mt-6" }, h("input", { type: "checkbox", name: "enabled", checked: cfg.enabled || null, class: "h-4 w-4" }), "Busca automática ligada")),
+    h("div", { class: "flex items-center gap-3" },
+      h("button", { type: "submit", class: "rounded-md bg-blue-600 px-5 py-2 text-white font-medium hover:bg-blue-700" }, "Salvar"),
+      h("span", { id: "cfg-status", class: "text-sm text-red-600" })));
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const f = new FormData(form);
+    const body = {
+      ...cfg, enabled: f.get("enabled") !== null, interval_hours: Number(f.get("interval_hours")), days_back: Number(f.get("days_back")),
+      segments: f.getAll("segments"), ufs: f.getAll("ufs"), modalidades: f.getAll("modalidades").map(Number),
+    };
+    try {
+      await api("/api/radar/config", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      state.radar = await api("/api/radar");
+      renderRadarInfo();
+      closeModal();
+    } catch (err) { $("#cfg-status").textContent = `Erro: ${err.message}`; }
+  });
+  openModal(h("h3", { class: "text-lg font-semibold" }, "Configurar radar"), form);
+}
+$("#btn-radar-config").addEventListener("click", openRadarConfig);
+
 
 // ------------------------------------------------------------ resultados
 async function loadAudits() {
@@ -545,13 +657,8 @@ $("#btn-json").addEventListener("click", () => (window.location.href = exportUrl
   const fill = (sel, entries) => $(sel).replaceChildren(...entries.map(([v, l]) => h("option", { value: v }, l)));
   fill("#up-regime", Object.entries(state.meta.regimes));
   fill("#up-categoria", Object.entries(state.meta.categorias));
-  fill("#scan-uf", [["", "Todas"], ...state.meta.ufs.map((u) => [u, u])]);
-  const today = new Date();
-  const past = new Date(today.getTime() - 30 * 864e5);
-  const iso = (d) => d.toISOString().slice(0, 10);
-  $("#scan-form [name=data_final]").value = iso(today);
-  $("#scan-form [name=data_inicial]").value = iso(past);
-  showTab("auditar");
+  await initOpportunities();
+  showTab("oportunidades");
   refreshBadge();
 })();
 </script>
