@@ -1,0 +1,7 @@
+.venv/
+node_modules/
+data/
+.pytest_cache/
+__pycache__/
+inbox_editais/*
+!inbox_editais/.gitkeep

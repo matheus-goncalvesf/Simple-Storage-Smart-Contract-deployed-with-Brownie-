@@ -1,0 +1,12 @@
+{
+  "name": "pncp-tax-radar-ui",
+  "private": true,
+  "description": "Só é necessário para regenerar app/static/app.css depois de alterar classes do index.html",
+  "scripts": {
+    "build:css": "tailwindcss -i app/static/tailwind.input.css -o app/static/app.css --minify"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.3.5",
+    "tailwindcss": "^4.3.5"
+  }
+}

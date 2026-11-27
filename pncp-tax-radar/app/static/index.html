@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PNCP Tax Radar</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="bg-slate-100 text-slate-800 antialiased min-h-screen">
+  <header class="bg-slate-900 text-white">
+    <div class="max-w-7xl mx-auto px-4 py-4 flex flex-wrap items-center justify-between gap-2">
+      <div>
+        <h1 class="text-xl font-bold tracking-tight">PNCP Tax Radar</h1>
+        <p class="text-sm text-slate-300">Auditoria tributária determinística de propostas vencedoras</p>
+      </div>
+      <p class="text-xs text-slate-400">Cálculo 100% por regras · sem IA no cálculo · rodando localmente</p>
+    </div>
+    <nav class="max-w-7xl mx-auto px-4 flex gap-1" id="tabs">
+      <button data-tab="auditar" class="tab px-4 py-2 text-sm font-medium rounded-t-md">Auditar arquivos</button>
+      <button data-tab="pncp" class="tab px-4 py-2 text-sm font-medium rounded-t-md">Varredura PNCP</button>
+      <button data-tab="resultados" class="tab px-4 py-2 text-sm font-medium rounded-t-md">
+        Resultados <span id="badge-alta" class="hidden ml-1 rounded-full bg-red-600 text-white text-xs px-2 py-0.5"></span>
+      </button>
+    </nav>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 py-6">
+    <!-- ============================================================ AUDITAR -->
+    <section id="tab-auditar" class="tab-panel space-y-6">
+      <div class="bg-white rounded-xl shadow-sm p-6">
+        <h2 class="text-lg font-semibold">Proposta da vencedora</h2>
+        <p class="text-sm text-slate-500 mb-4">Envie a planilha de custos, a proposta e, se quiser, o edital (contexto). Aceita .xlsx, .xls, .pdf, .docx, .csv e .zip.</p>
+        <label id="dropzone" for="file-input"
+               class="flex flex-col items-center justify-center border-2 border-dashed border-slate-300 rounded-lg p-8 text-center cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition">
+          <span class="text-base font-medium">Arraste os arquivos aqui ou clique para escolher</span>
+          <span class="text-xs text-slate-500 mt-1">Todos os arquivos enviados juntos formam um caso</span>
+          <input id="file-input" type="file" multiple class="hidden" accept=".xlsx,.xlsm,.xls,.pdf,.docx,.csv,.txt,.zip,.rar,.7z">
+        </label>
+        <ul id="file-list" class="mt-3 space-y-1 text-sm"></ul>
+        <div class="grid md:grid-cols-3 gap-4 mt-4">
+          <label class="block text-sm">
+            <span class="font-medium">Regime da vencedora</span>
+            <select id="up-regime" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 bg-white"></select>
+          </label>
+          <label class="block text-sm">
+            <span class="font-medium">Objeto / tipo de serviço</span>
+            <select id="up-categoria" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 bg-white"></select>
+          </label>
+          <label class="block text-sm">
+            <span class="font-medium">Nome do caso (opcional)</span>
+            <input id="up-titulo" type="text" placeholder="ex.: Pregão 90012/2026 — UFX" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2">
+          </label>
+        </div>
+        <div class="mt-4 flex items-center gap-3">
+          <button id="btn-upload" class="rounded-md bg-blue-600 px-5 py-2 text-white font-medium hover:bg-blue-700 disabled:opacity-50" disabled>Auditar agora</button>
+          <span id="upload-status" class="text-sm text-slate-500"></span>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-xl shadow-sm p-6">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 class="text-lg font-semibold">Pasta monitorada</h2>
+            <p class="text-sm text-slate-500">Cada arquivo ou subpasta em <code id="inbox-dir" class="bg-slate-100 px-1 rounded"></code> vira um caso. <span id="inbox-watch"></span></p>
+          </div>
+          <button id="btn-inbox" class="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium hover:bg-slate-50">Verificar pasta agora</button>
+        </div>
+        <p id="inbox-progress" class="text-sm text-slate-600 mt-2"></p>
+        <table class="w-full text-sm mt-3">
+          <thead class="text-left text-slate-500 border-b"><tr><th class="py-2">Item</th><th>Status</th><th>Processado em</th><th></th></tr></thead>
+          <tbody id="inbox-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ============================================================ PNCP -->
+    <section id="tab-pncp" class="tab-panel hidden space-y-6">
+      <div class="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+        <p class="font-semibold">Antes do primeiro uso</p>
+        <p>Os endpoints do PNCP não puderam ser testados no ambiente onde o robô foi construído. Rode <code class="bg-amber-100 px-1 rounded">python tools/pncp_probe.py</code> na sua máquina para conferir.</p>
+        <p class="mt-1">A planilha da vencedora raramente é publicada no PNCP dentro do prazo de recurso. Use a varredura sobretudo para prospectar licitações; para auditar a vencedora, prefira o upload do arquivo baixado no portal da disputa.</p>
+      </div>
+      <form id="scan-form" class="bg-white rounded-xl shadow-sm p-6 grid md:grid-cols-4 gap-4">
+        <label class="block text-sm"><span class="font-medium">Data inicial</span>
+          <input name="data_inicial" type="date" required class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"></label>
+        <label class="block text-sm"><span class="font-medium">Data final</span>
+          <input name="data_final" type="date" required class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"></label>
+        <label class="block text-sm"><span class="font-medium">UF</span>
+          <select name="uf" id="scan-uf" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 bg-white"></select></label>
+        <label class="block text-sm"><span class="font-medium">Modalidade</span>
+          <select name="modalidades" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 bg-white">
+            <option value="6">Pregão Eletrônico</option>
+            <option value="4">Concorrência Eletrônica</option>
+            <option value="6,4">Pregão + Concorrência Eletrônica</option>
+            <option value="8">Dispensa de Licitação</option>
+          </select></label>
+        <label class="block text-sm md:col-span-2"><span class="font-medium">Palavras-chave no objeto (separadas por vírgula)</span>
+          <input name="keywords" type="text" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
+                 value="limpeza, conservação, vigilância, recepção, copeiragem, portaria, terceirização"></label>
+        <label class="block text-sm"><span class="font-medium">Consulta</span>
+          <select name="endpoint" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 bg-white">
+            <option value="publicacao">Publicadas no período</option>
+            <option value="atualizacao">Atualizadas no período (ex.: resultado)</option>
+            <option value="proposta">Com propostas abertas</option>
+          </select></label>
+        <div class="grid grid-cols-2 gap-2">
+          <label class="block text-sm"><span class="font-medium">Limite</span>
+            <input name="limite" type="number" min="1" max="200" value="20" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"></label>
+          <label class="block text-sm"><span class="font-medium">Anexos/licit.</span>
+            <input name="max_files" type="number" min="1" max="40" value="12" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"></label>
+        </div>
+        <div class="md:col-span-4 flex items-center gap-3">
+          <button type="submit" id="btn-scan" class="rounded-md bg-blue-600 px-5 py-2 text-white font-medium hover:bg-blue-700 disabled:opacity-50">Iniciar varredura</button>
+          <span id="scan-error" class="text-sm text-red-600"></span>
+        </div>
+      </form>
+
+      <div id="progress-card" class="hidden bg-white rounded-xl shadow-sm p-6">
+        <div class="flex items-center justify-between gap-3">
+          <p id="progress-stage" class="font-medium"></p>
+          <button id="btn-cancel" class="rounded-md bg-red-600 px-4 py-1.5 text-sm text-white font-medium hover:bg-red-700 disabled:opacity-50">Parar</button>
+        </div>
+        <div class="mt-3 h-3 w-full rounded-full bg-slate-200 overflow-hidden">
+          <div id="progress-bar" class="h-3 bg-blue-600 transition-all" style="width:0%"></div>
+        </div>
+        <p id="progress-counts" class="mt-2 text-sm text-slate-600"></p>
+        <ul id="progress-log" class="mt-3 max-h-64 overflow-y-auto text-sm space-y-1"></ul>
+      </div>
+    </section>
+
+    <!-- ============================================================ RESULTADOS -->
+    <section id="tab-resultados" class="tab-panel hidden space-y-4">
+      <div class="bg-white rounded-xl shadow-sm p-4 flex flex-wrap items-center gap-3">
+        <label class="flex items-center gap-2 text-sm font-medium">
+          <input id="f-errors" type="checkbox" class="h-4 w-4"> Mostrar só com erro tributário
+        </label>
+        <select id="f-source" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm bg-white">
+          <option value="">Todas as origens</option>
+          <option value="upload">Upload</option>
+          <option value="inbox">Pasta monitorada</option>
+          <option value="pncp">PNCP</option>
+        </select>
+        <input id="f-search" type="search" placeholder="Buscar caso, órgão, licitante..." class="rounded-md border border-slate-300 px-3 py-1.5 text-sm flex-1 min-w-48">
+        <button id="btn-refresh" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50">Atualizar</button>
+        <button id="btn-csv" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50">Exportar CSV</button>
+        <button id="btn-json" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50">Exportar JSON</button>
+      </div>
+      <div class="text-xs text-slate-500 flex flex-wrap gap-4 px-1">
+        <span><b class="text-red-700">Derruba</b>: correção maior que lucro + custos indiretos</span>
+        <span><b class="text-red-700">Provável</b>: maior que o lucro</span>
+        <span><b class="text-amber-700">Sanável</b>: cabe no lucro (a vencedora ajusta sem subir preço)</span>
+        <span>Impactos por unidade da planilha (em geral posto/mês)</span>
+      </div>
+      <div class="bg-white rounded-xl shadow-sm overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="text-left text-slate-500 border-b bg-slate-50">
+            <tr><th class="py-2 px-3">Severidade</th><th class="px-3">Caso</th><th class="px-3">Origem</th><th class="px-3">Achados</th><th class="px-3">Maior impacto</th><th class="px-3">Data</th><th class="px-3"></th></tr>
+          </thead>
+          <tbody id="results-body"></tbody>
+        </table>
+        <p id="results-empty" class="hidden p-6 text-center text-slate-500">Nenhum resultado ainda. Envie uma proposta na aba “Auditar arquivos”.</p>
+      </div>
+    </section>
+  </main>
+
+  <!-- ============================================================ MODAL -->
+  <div id="modal" class="hidden fixed inset-0 z-50 bg-slate-900/60 flex items-start justify-center overflow-y-auto p-4" role="dialog" aria-modal="true">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-3xl my-8">
+      <div class="flex items-start justify-between gap-4 border-b p-5">
+        <div id="modal-head"></div>
+        <button id="modal-close" class="text-slate-500 hover:text-slate-900 text-2xl leading-none" aria-label="Fechar">&times;</button>
+      </div>
+      <div id="modal-body" class="p-5 space-y-4 text-sm"></div>
+    </div>
+  </div>
+
+<script>
+"use strict";
+const $ = (sel, el = document) => el.querySelector(sel);
+const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
+
+function h(tag, attrs, ...children) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v === null || v === undefined || v === false) continue;
+    if (k === "class") el.className = v;
+    else if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
+    else el.setAttribute(k, v === true ? "" : v);
+  }
+  for (const c of children.flat(Infinity)) {
+    if (c === null || c === undefined || c === false) continue;
+    el.append(c instanceof Node ? c : document.createTextNode(String(c)));
+  }
+  return el;
+}
+
+const BRL = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+const money = (v) => (v === null || v === undefined ? "—" : BRL.format(v));
+const fmtDate = (iso) => (iso ? new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : "—");
+
+const SEV_BADGE = {
+  ALTA: "bg-red-600 text-white",
+  MEDIA: "bg-amber-400 text-amber-950",
+  INFO: "bg-slate-200 text-slate-700",
+};
+const SEV_LABEL = { ALTA: "ALTA", MEDIA: "MÉDIA", INFO: "INFO" };
+const ROW_CLASS = {
+  ALTA: "bg-red-50 border-l-4 border-red-500",
+  MEDIA: "bg-amber-50 border-l-4 border-amber-400",
+  INFO: "border-l-4 border-slate-200",
+  none: "border-l-4 border-transparent",
+};
+const VERDICT = {
+  FORTE: ["Derruba", "bg-red-100 text-red-800 border border-red-300"],
+  MODERADO: ["Provável", "bg-orange-100 text-orange-800 border border-orange-300"],
+  SANAVEL: ["Sanável", "bg-amber-100 text-amber-800 border border-amber-300"],
+  INDETERMINADO: ["Indeterminado", "bg-slate-100 text-slate-700 border border-slate-300"],
+  A_FAVOR: ["Sem impacto", "bg-slate-100 text-slate-500 border border-slate-200"],
+};
+const SOURCE_LABEL = { upload: "Upload", inbox: "Pasta", pncp: "PNCP" };
+const REGIME_LABEL = { simples: "Simples Nacional", presumido: "Lucro Presumido", real: "Lucro Real" };
+
+const sevBadge = (s) => h("span", { class: `inline-block rounded px-2 py-0.5 text-xs font-bold ${SEV_BADGE[s] || "bg-slate-100 text-slate-500"}` }, SEV_LABEL[s] || "sem erro");
+const verdictBadge = (v) => {
+  const [label, cls] = VERDICT[v] || ["—", "bg-slate-100"];
+  return h("span", { class: `inline-block rounded px-2 py-0.5 text-xs font-semibold ${cls}` }, label);
+};
+
+const state = { meta: null, audits: [], expanded: new Set(), files: [], scanJob: null };
+
+async function api(path, opts = {}) {
+  const r = await fetch(path, opts);
+  if (!r.ok) {
+    let msg = `${r.status}`;
+    try { const j = await r.json(); msg = typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail); } catch (_) {}
+    throw new Error(msg);
+  }
+  return r.json();
+}
+
+// ------------------------------------------------------------ abas
+function showTab(name) {
+  $$(".tab").forEach((b) => {
+    const active = b.dataset.tab === name;
+    b.className = `tab px-4 py-2 text-sm font-medium rounded-t-md ${active ? "bg-slate-100 text-slate-900" : "text-slate-300 hover:text-white hover:bg-slate-800"}`;
+  });
+  $$(".tab-panel").forEach((p) => p.classList.toggle("hidden", p.id !== `tab-${name}`));
+  if (name === "resultados") loadAudits();
+  if (name === "auditar") loadInbox();
+}
+$$(".tab").forEach((b) => b.addEventListener("click", () => showTab(b.dataset.tab)));
+
+// ------------------------------------------------------------ modal
+function openModal(head, body) {
+  $("#modal-head").replaceChildren(head);
+  $("#modal-body").replaceChildren(...[body].flat(Infinity).filter((x) => x !== null && x !== undefined));
+  $("#modal").classList.remove("hidden");
+}
+function closeModal() { $("#modal").classList.add("hidden"); }
+$("#modal-close").addEventListener("click", closeModal);
+$("#modal").addEventListener("click", (e) => { if (e.target.id === "modal") closeModal(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeModal(); });
+
+async function copyText(text, btn) {
+  try { await navigator.clipboard.writeText(text); }
+  catch (_) {
+    const ta = h("textarea", {}, text); document.body.append(ta); ta.select(); document.execCommand("copy"); ta.remove();
+  }
+  const old = btn.textContent; btn.textContent = "Copiado!"; setTimeout(() => (btn.textContent = old), 1500);
+}
+
+function copyBlock(text) {
+  const ta = h("textarea", { class: "w-full h-80 rounded-md border border-slate-300 p-3 font-mono text-xs", readonly: true });
+  ta.value = text;
+  const btn = h("button", { class: "rounded-md bg-blue-600 px-4 py-2 text-white text-sm font-medium hover:bg-blue-700" }, "Copiar");
+  btn.addEventListener("click", () => copyText(text, btn));
+  return [ta, h("div", { class: "flex items-center gap-3" }, btn, h("span", { class: "text-xs text-slate-500" }, state.meta?.review_notice || ""))];
+}
+
+function alertHead(a) {
+  return h("div", {},
+    h("div", { class: "flex flex-wrap gap-2 mb-1" }, sevBadge(a.severity), verdictBadge(a.verdict), h("span", { class: "text-xs text-slate-500" }, a.rule_id)),
+    h("h3", { class: "text-lg font-semibold" }, a.title),
+    h("p", { class: "text-xs text-slate-500" }, a.block));
+}
+
+function impactBar(a) {
+  if (a.impact === null || a.impact === undefined || a.lucro === null || a.lucro === undefined) return null;
+  const ci = a.custos_indiretos || 0;
+  const max = Math.max(a.impact, a.lucro + ci, 0.01);
+  const pct = (v) => `${Math.max(0, Math.min(100, (v / max) * 100)).toFixed(1)}%`;
+  return h("div", { class: "space-y-1" },
+    h("div", { class: "flex items-center gap-2 text-xs" }, h("span", { class: "w-32" }, "Impacto"),
+      h("div", { class: "flex-1 h-3 bg-slate-100 rounded" }, h("div", { class: "h-3 rounded bg-red-500", style: `width:${pct(a.impact)}` })),
+      h("span", { class: "w-28 text-right font-semibold" }, money(a.impact))),
+    h("div", { class: "flex items-center gap-2 text-xs" }, h("span", { class: "w-32" }, a.lucro_estimado ? "Lucro (estimado)" : "Lucro declarado"),
+      h("div", { class: "flex-1 h-3 bg-slate-100 rounded" }, h("div", { class: "h-3 rounded bg-emerald-500", style: `width:${pct(a.lucro)}` })),
+      h("span", { class: "w-28 text-right" }, money(a.lucro))),
+    ci ? h("div", { class: "flex items-center gap-2 text-xs" }, h("span", { class: "w-32" }, "Lucro + C. indiretos"),
+      h("div", { class: "flex-1 h-3 bg-slate-100 rounded" }, h("div", { class: "h-3 rounded bg-emerald-300", style: `width:${pct(a.lucro + ci)}` })),
+      h("span", { class: "w-28 text-right" }, money(a.lucro + ci))) : null);
+}
+
+function showEvidence(audit, a) {
+  const body = [
+    h("div", { class: "grid md:grid-cols-2 gap-3" },
+      h("div", { class: "rounded-lg border border-red-200 bg-red-50 p-3" },
+        h("p", { class: "text-xs font-semibold uppercase text-red-700 mb-1" }, "Na planilha da vencedora"), h("p", {}, a.found)),
+      h("div", { class: "rounded-lg border border-emerald-200 bg-emerald-50 p-3" },
+        h("p", { class: "text-xs font-semibold uppercase text-emerald-700 mb-1" }, "O correto"), h("p", {}, a.expected))),
+    impactBar(a),
+    a.preco ? h("p", { class: "text-xs text-slate-500" }, `Preço da unidade da planilha: ${money(a.preco)}`) : null,
+    a.scenarios && a.scenarios.length ? h("table", { class: "w-full text-xs border" },
+      h("thead", { class: "bg-slate-50" }, h("tr", {}, h("th", { class: "p-2 text-left" }, "Cenário"), h("th", { class: "p-2 text-left" }, "Alíquota"), h("th", { class: "p-2 text-right" }, "Impacto"))),
+      h("tbody", {}, a.scenarios.map((s) => h("tr", { class: "border-t" }, h("td", { class: "p-2" }, s.cenario), h("td", { class: "p-2" }, s.aliquota), h("td", { class: "p-2 text-right" }, money(s.impacto)))))) : null,
+    h("div", {},
+      h("p", { class: "text-xs font-semibold uppercase text-slate-500 mb-1" }, "Evidência extraída do arquivo"),
+      h("pre", { class: "whitespace-pre-wrap break-words rounded-md bg-slate-900 text-slate-100 p-3 text-xs font-mono" }, a.evidence),
+      h("p", { class: "text-xs text-slate-500 mt-1" }, `Local: ${a.location}`)),
+    h("div", {}, h("p", { class: "text-xs font-semibold uppercase text-slate-500 mb-1" }, "Explicação técnica"), h("p", {}, a.technical_explanation)),
+    audit.pncp_url ? h("a", { href: audit.pncp_url, target: "_blank", rel: "noopener noreferrer", class: "inline-block text-blue-700 underline" }, "Abrir a licitação no PNCP") : null,
+  ];
+  openModal(alertHead(a), body);
+}
+
+function showTese(a) {
+  openModal(alertHead(a), [
+    h("div", {}, h("p", { class: "text-xs font-semibold uppercase text-slate-500 mb-1" }, "Fundamentação legal"), h("p", {}, a.legal_basis)),
+    h("div", {}, h("p", { class: "text-xs font-semibold uppercase text-slate-500 mb-1" }, "Tese / solução"), h("p", {}, a.actionable_solution)),
+    h("p", { class: "text-xs font-semibold uppercase text-slate-500" }, "Rascunho para copiar"),
+    copyBlock(a.tese),
+  ]);
+}
+
+function showRecurso(audit) {
+  openModal(h("div", {}, h("h3", { class: "text-lg font-semibold" }, "Rascunho de razões de recurso"), h("p", { class: "text-xs text-slate-500" }, audit.title)),
+    [h("p", { class: "text-xs text-slate-600" }, "Prazo: intenção de recorrer imediatamente na sessão e razões em 3 dias úteis (Lei 14.133/2021, art. 165). Preencha os campos entre colchetes."),
+     copyBlock(audit.recurso)]);
+}
+
+// ------------------------------------------------------------ upload
+function renderFiles() {
+  const list = $("#file-list");
+  list.replaceChildren(...state.files.map((f, i) => h("li", { class: "flex items-center justify-between rounded bg-slate-50 px-3 py-1" },
+    h("span", {}, `${f.name} · ${(f.size / 1024).toFixed(0)} KB`),
+    h("button", { class: "text-red-600 text-xs hover:underline", onclick: () => { state.files.splice(i, 1); renderFiles(); } }, "remover"))));
+  $("#btn-upload").disabled = state.files.length === 0;
+}
+function addFiles(fileList) { state.files.push(...fileList); renderFiles(); }
+$("#file-input").addEventListener("change", (e) => { addFiles(e.target.files); e.target.value = ""; });
+const dz = $("#dropzone");
+["dragenter", "dragover"].forEach((ev) => dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.add("border-blue-500", "bg-blue-50"); }));
+["dragleave", "drop"].forEach((ev) => dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.remove("border-blue-500", "bg-blue-50"); }));
+dz.addEventListener("drop", (e) => addFiles(e.dataTransfer.files));
+
+$("#btn-upload").addEventListener("click", async () => {
+  const fd = new FormData();
+  state.files.forEach((f) => fd.append("files", f, f.name));
+  fd.append("regime", $("#up-regime").value);
+  fd.append("categoria", $("#up-categoria").value);
+  fd.append("titulo", $("#up-titulo").value);
+  $("#btn-upload").disabled = true;
+  $("#upload-status").textContent = "Auditando...";
+  try {
+    const audit = await api("/api/audit/upload", { method: "POST", body: fd });
+    state.files = []; renderFiles(); $("#up-titulo").value = "";
+    $("#upload-status").textContent = "";
+    state.expanded.add(audit.id);
+    showTab("resultados");
+  } catch (err) {
+    $("#upload-status").textContent = `Erro: ${err.message}`;
+    $("#btn-upload").disabled = false;
+  }
+});
+
+// ------------------------------------------------------------ inbox
+async function loadInbox() {
+  try {
+    const data = await api("/api/inbox");
+    $("#inbox-dir").textContent = data.dir;
+    $("#inbox-watch").textContent = data.watch ? "Verificação automática a cada poucos segundos." : "Verificação automática desligada.";
+    const rows = data.entries.map((e) => h("tr", { class: "border-b" },
+      h("td", { class: "py-2" }, e.name, e.is_dir ? h("span", { class: "ml-1 text-xs text-slate-500" }, "(pasta)") : null),
+      h("td", {}, e.status),
+      h("td", {}, fmtDate(e.processed_at)),
+      h("td", { class: "text-right" }, e.audit_id ? h("button", { class: "text-blue-700 hover:underline", onclick: () => { state.expanded.add(e.audit_id); showTab("resultados"); } }, "ver resultado") : "")));
+    $("#inbox-body").replaceChildren(...(rows.length ? rows : [h("tr", {}, h("td", { class: "py-3 text-slate-500", colspan: 4 }, "Pasta vazia."))]));
+  } catch (err) { $("#inbox-progress").textContent = `Erro ao ler a pasta: ${err.message}`; }
+}
+$("#btn-inbox").addEventListener("click", async () => {
+  const job = await api("/api/inbox/scan?force=false", { method: "POST" });
+  watchJob(job.id, (ev) => {
+    $("#inbox-progress").textContent = ev.stage + (ev.total ? ` (${ev.done}/${ev.total})` : "");
+    if (["done", "cancelled", "error"].includes(ev.type)) loadInbox();
+  });
+});
+
+// ------------------------------------------------------------ jobs / SSE
+function watchJob(jobId, onEvent) {
+  const es = new EventSource(`/api/jobs/${jobId}/events`);
+  es.onmessage = (m) => {
+    const ev = JSON.parse(m.data);
+    onEvent(ev);
+    if (["done", "cancelled", "error"].includes(ev.type)) { es.close(); refreshBadge(); }
+  };
+  return es;
+}
+
+function logLine(ev) {
+  const li = (cls, ...c) => h("li", { class: `rounded px-2 py-1 ${cls}` }, ...c);
+  if (ev.type === "item_done") {
+    return li(ev.max_severity === "ALTA" ? "bg-red-50" : ev.max_severity === "MEDIA" ? "bg-amber-50" : "bg-slate-50",
+      sevBadge(ev.max_severity), " ", ev.item, ` — ${ev.n_alerts} achado(s) `,
+      h("button", { class: "text-blue-700 hover:underline", onclick: () => { state.expanded.add(ev.audit_id); showTab("resultados"); } }, "ver"));
+  }
+  if (ev.type === "item_error") return li("bg-red-100 text-red-800", `Falha isolada: ${ev.item} — ${ev.message}`);
+  if (ev.type === "error") return li("bg-red-100 text-red-800", `Erro: ${ev.message}`);
+  return null;
+}
+
+$("#scan-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const body = {
+    data_inicial: f.get("data_inicial"), data_final: f.get("data_final"),
+    uf: f.get("uf") || null, keywords: f.get("keywords"),
+    modalidades: f.get("modalidades").split(",").map(Number), endpoint: f.get("endpoint"),
+    limite: Number(f.get("limite")), max_files: Number(f.get("max_files")),
+  };
+  $("#scan-error").textContent = "";
+  try {
+    const job = await api("/api/pncp/scan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    state.scanJob = job.id;
+    $("#btn-scan").disabled = true;
+    $("#btn-cancel").disabled = false;
+    $("#progress-card").classList.remove("hidden");
+    $("#progress-log").replaceChildren();
+    watchJob(job.id, (ev) => {
+      $("#progress-stage").textContent = ev.stage;
+      const pct = ev.total ? Math.round((ev.done / ev.total) * 100) : 0;
+      $("#progress-bar").style.width = `${["done"].includes(ev.type) ? 100 : pct}%`;
+      $("#progress-counts").textContent = `Processando ${ev.done}/${ev.total || "?"} · ${ev.failures} falha(s) isolada(s)`;
+      const line = logLine(ev);
+      if (line) $("#progress-log").prepend(line);
+      if (["done", "cancelled", "error"].includes(ev.type)) { $("#btn-scan").disabled = false; $("#btn-cancel").disabled = true; }
+    });
+  } catch (err) { $("#scan-error").textContent = `Erro: ${err.message}`; }
+});
+$("#btn-cancel").addEventListener("click", async () => {
+  if (state.scanJob) await api(`/api/jobs/${state.scanJob}/cancel`, { method: "POST" });
+});
+
+// ------------------------------------------------------------ resultados
+async function loadAudits() {
+  const source = $("#f-source").value;
+  const params = new URLSearchParams();
+  if (source) params.set("source", source);
+  state.audits = await api(`/api/audits?${params}`);
+  renderAudits();
+  refreshBadge();
+}
+
+function matchesFilter(a) {
+  if ($("#f-errors").checked && !["ALTA", "MEDIA"].includes(a.max_severity)) return false;
+  const q = $("#f-search").value.trim().toLowerCase();
+  if (!q) return true;
+  const hay = [a.title, a.context?.licitante, a.context?.orgao, a.context?.pregao, a.meta?.orgao, a.meta?.objeto].join(" ").toLowerCase();
+  return hay.includes(q);
+}
+
+function auditDetails(a) {
+  const ctx = a.context || {};
+  const chip = (label, value) => value ? h("span", { class: "rounded-full bg-white border border-slate-200 px-2 py-0.5 text-xs" }, h("b", {}, `${label}: `), value) : null;
+  const vencedores = (a.meta?.vencedores || []).map((v) => `${v.fornecedor || "?"}${v.ni ? ` (${v.ni})` : ""}`);
+  return h("div", { class: "space-y-4 p-4 bg-white" },
+    h("div", { class: "flex flex-wrap gap-2" },
+      chip("Regime", ctx.regime ? `${REGIME_LABEL[ctx.regime] || ctx.regime}${ctx.regime_inferred ? " (inferido)" : ""}` : "não identificado"),
+      chip("Objeto", ctx.category ? (state.meta?.categorias?.[ctx.category] || ctx.category) : "não identificado"),
+      chip("Pregão", ctx.pregao), chip("Licitante", ctx.licitante), chip("CNPJ", ctx.cnpj),
+      chip("Órgão", ctx.orgao || a.meta?.orgao), chip("Vencedor(es) no PNCP", vencedores.join("; "))),
+    h("div", { class: "flex flex-wrap gap-2" },
+      a.recurso ? h("button", { class: "rounded-md bg-slate-900 px-3 py-1.5 text-xs text-white font-medium hover:bg-slate-700", onclick: () => showRecurso(a) }, "Rascunho de recurso") : null,
+      a.pncp_url ? h("a", { href: a.pncp_url, target: "_blank", rel: "noopener noreferrer", class: "rounded-md border border-slate-300 px-3 py-1.5 text-xs hover:bg-slate-50" }, "Abrir no PNCP") : null,
+      h("button", { class: "rounded-md border border-red-300 text-red-700 px-3 py-1.5 text-xs hover:bg-red-50", onclick: async () => {
+        if (!confirm("Excluir este resultado?")) return;
+        await api(`/api/audits/${a.id}`, { method: "DELETE" }); loadAudits();
+      } }, "Excluir")),
+    a.alerts.length ? h("div", { class: "space-y-2" }, a.alerts.map((al) => h("div", { class: `rounded-lg p-3 ${ROW_CLASS[al.severity]}` },
+      h("div", { class: "flex flex-wrap items-center gap-2" }, sevBadge(al.severity), verdictBadge(al.verdict),
+        h("span", { class: "font-semibold" }, al.title), h("span", { class: "text-xs text-slate-500" }, `· ${al.block}`)),
+      h("p", { class: "mt-1 text-xs" }, h("b", {}, "Na planilha: "), al.found, h("b", {}, " → correto: "), al.expected),
+      al.impact !== null ? h("p", { class: "text-xs text-slate-600" }, `Impacto ${money(al.impact)} · lucro ${money(al.lucro)}${al.lucro_estimado ? " (estimado)" : ""}`) : null,
+      h("div", { class: "mt-2 flex gap-2" },
+        h("button", { class: "rounded-md bg-red-600 px-3 py-1 text-xs text-white font-medium hover:bg-red-700", onclick: () => showEvidence(a, al) }, "Ver erro e evidência"),
+        h("button", { class: "rounded-md bg-blue-600 px-3 py-1 text-xs text-white font-medium hover:bg-blue-700", onclick: () => showTese(al) }, "Ver tese / solução"))))) :
+      h("p", { class: "text-sm text-emerald-700" }, "Nenhum erro tributário encontrado pelas regras."),
+    h("details", { class: "text-xs" },
+      h("summary", { class: "cursor-pointer text-slate-600" }, `Documentos (${a.documents.length}) e planilhas lidas (${a.blocks.length})`),
+      h("ul", { class: "mt-2 space-y-1" }, a.documents.map((d) => h("li", { class: d.error ? "text-red-700" : "" },
+        `${d.name} [${d.kind}] — ${d.error ? `ERRO: ${d.error}` : `${d.rows} linhas, ${d.blocks} planilha(s)`}`,
+        d.warnings.length ? h("span", { class: "text-amber-700" }, ` · ${d.warnings.join(" · ")}`) : null))),
+      h("ul", { class: "mt-2 space-y-1" }, a.blocks.map((b) => h("li", {},
+        `${b.title}: preço ${money(b.price)}${b.price_estimated ? " (estimado)" : ""}, lucro ${money(b.lucro)}, tributos ${b.gross_up.replace("_", " ")}`)))));
+}
+
+function renderAudits() {
+  const rows = [];
+  const visible = state.audits.filter(matchesFilter);
+  for (const a of visible) {
+    const open = state.expanded.has(a.id);
+    rows.push(h("tr", { class: `cursor-pointer hover:brightness-95 ${ROW_CLASS[a.max_severity] || ROW_CLASS.none}`, onclick: () => { open ? state.expanded.delete(a.id) : state.expanded.add(a.id); renderAudits(); } },
+      h("td", { class: "py-2 px-3" }, sevBadge(a.max_severity), a.max_verdict && a.max_severity !== "INFO" ? h("div", { class: "mt-1" }, verdictBadge(a.max_verdict)) : null),
+      h("td", { class: "px-3" }, h("div", { class: "font-medium" }, a.title), a.meta?.objeto ? h("div", { class: "text-xs text-slate-500" }, a.meta.objeto.slice(0, 140)) : null),
+      h("td", { class: "px-3" }, SOURCE_LABEL[a.source] || a.source),
+      h("td", { class: "px-3 whitespace-nowrap" }, `${a.counts.ALTA} alta · ${a.counts.MEDIA} média · ${a.counts.INFO} info`),
+      h("td", { class: "px-3 whitespace-nowrap font-semibold" }, money(a.max_impact)),
+      h("td", { class: "px-3 whitespace-nowrap text-xs" }, fmtDate(a.created_at)),
+      h("td", { class: "px-3 text-slate-400" }, open ? "▲" : "▼")));
+    if (open) rows.push(h("tr", {}, h("td", { colspan: 7, class: "border-b" }, auditDetails(a))));
+  }
+  $("#results-body").replaceChildren(...rows);
+  $("#results-empty").classList.toggle("hidden", visible.length > 0);
+}
+
+async function refreshBadge() {
+  try {
+    const altas = await api("/api/audits?min_severity=ALTA");
+    const b = $("#badge-alta");
+    b.textContent = altas.length;
+    b.classList.toggle("hidden", altas.length === 0);
+  } catch (_) {}
+}
+
+$("#f-errors").addEventListener("change", renderAudits);
+$("#f-search").addEventListener("input", renderAudits);
+$("#f-source").addEventListener("change", loadAudits);
+$("#btn-refresh").addEventListener("click", loadAudits);
+const exportUrl = (fmt) => `/api/export?format=${fmt}${$("#f-errors").checked ? "&min_severity=MEDIA" : ""}${$("#f-source").value ? `&source=${$("#f-source").value}` : ""}`;
+$("#btn-csv").addEventListener("click", () => (window.location.href = exportUrl("csv")));
+$("#btn-json").addEventListener("click", () => (window.location.href = exportUrl("json")));
+
+// ------------------------------------------------------------ início
+(async function init() {
+  state.meta = await api("/api/meta");
+  const fill = (sel, entries) => $(sel).replaceChildren(...entries.map(([v, l]) => h("option", { value: v }, l)));
+  fill("#up-regime", Object.entries(state.meta.regimes));
+  fill("#up-categoria", Object.entries(state.meta.categorias));
+  fill("#scan-uf", [["", "Todas"], ...state.meta.ufs.map((u) => [u, u])]);
+  const today = new Date();
+  const past = new Date(today.getTime() - 30 * 864e5);
+  const iso = (d) => d.toISOString().slice(0, 10);
+  $("#scan-form [name=data_final]").value = iso(today);
+  $("#scan-form [name=data_inicial]").value = iso(past);
+  showTab("auditar");
+  refreshBadge();
+})();
+</script>
+</body>
+</html>
