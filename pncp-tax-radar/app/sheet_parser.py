@@ -26,14 +26,14 @@ FIELD_PATTERNS: list[tuple[str, re.Pattern]] = [
         (
             "total_geral",
             r"valor (global|total|mensal)|preco (total|mensal|final|global)|"
-            r"total (geral|por (empregado|posto|funcionario)|do posto|mensal)|^total$",
+            r"total (geral|por (empregado|posto|funcionario)|do posto|mensal)",
         ),
         ("pis_cofins", r"\bpis\b.*\bcofins\b|\bcofins\b.*\bpis\b"),
         ("pis", r"\bpis\b|\bpasep\b"),
         ("cofins", r"\bcofins\b"),
         ("iss", r"\biss(qn)?\b|imposto sobre servic"),
         ("icms", r"\bicms\b"),
-        ("simples", r"simples nacional|\bdas\b"),
+        ("simples", r"simples nacional|documento de arrecadacao do simples"),
         ("fgts", r"\bfgts\b|fundo de garantia"),
         ("rat", r"\b(rat|sat|gilrat)\b|riscos? ambientais|acidentes? (de|do) trabalho"),
         ("sal_educ", r"salario[- ]educac"),
@@ -58,8 +58,8 @@ MAX_RATE = {
     "incra": 0.05, "fgts": 0.12, "lucro": 0.6, "ci": 0.6,
 }
 
-BLOCK_START = re.compile(r"\bmodulo\s*1\b|composicao da remunerac")
-TITLE_RE = re.compile(r"^(posto|funcao|cargo|categoria profissional|categoria)\b\s*[:\-–]?\s*(.+)")
+BLOCK_START = re.compile(r"\bmodulo\s*0?1\b|composicao da remunerac")
+TITLE_RE = re.compile(r"^(?:[a-z0-9]{1,3}[.)]?\s+)?(posto|funcao|cargo|categoria profissional)(?:\s*/\s*\w+)?\s*[:\-–]\s*(.+)")
 
 CATEGORY_PATTERNS: dict[str, re.Pattern] = {
     "limpeza": re.compile(r"\blimpeza\b|conservacao|\basseio\b|higienizac|servente(?! de obra)"),
@@ -99,12 +99,19 @@ LICITANTE_RE = re.compile(r"(?:licitante|raz[aã]o social|proponente|empresa)\s*
 ORGAO_RE = re.compile(r"(?:[óo]rg[aã]o|contratante|uasg)\s*[:\-–]\s*([^\n|—–]{3,120})", re.I)
 
 
+IGNORED_LABEL = re.compile(r"incidencia|multa|aviso previo|\bgps\b|substitut")
+TOTAL_FIELDS = {"total_tributos", "total_encargos", "total_remuneracao", "subtotal", "total_geral"}
+
+
 def detect_field(label: str) -> str | None:
     norm = normalize(label)
-    if not norm or "incidencia" in norm:
+    if not norm or IGNORED_LABEL.search(norm):
         return None
     for name, pattern in FIELD_PATTERNS:
         if pattern.search(norm):
+            # linhas de resumo ("Módulo 6 – Custos indiretos, tributos e lucro") não são a rubrica em si
+            if "modulo" in norm and name not in TOTAL_FIELDS:
+                return None
             return name
     return None
 
@@ -207,7 +214,8 @@ class CostBlock:
         return sum(1 for f in self.hits if f in RATE_FIELDS)
 
     def valued_count(self) -> int:
-        return sum(1 for f, hs in self.hits.items() if f in RATE_FIELDS for h in hs if h.value is not None)
+        """Rubricas com valor diferente de zero: um modelo em branco (tudo R$ 0,00) não é planilha para auditar."""
+        return sum(1 for f, hs in self.hits.items() if f in RATE_FIELDS for h in hs if h.value)
 
     def encargos_base(self, exclude: tuple[str, ...] = ()) -> float | None:
         """Base de incidência dos encargos (Módulo 1 + Submódulo 2.1) inferida de valor ÷ alíquota."""
@@ -222,6 +230,14 @@ class CostBlock:
             return median(bases)
         rem = self.first("total_remuneracao")
         return rem.value if rem and rem.value else None
+
+
+def looks_like_blank_template(doc: Document) -> bool:
+    """Tem rubricas de planilha de custos, mas todas zeradas: é o modelo do edital, não uma proposta."""
+    hits = [read_hit(r, f) for r in doc.rows if r.numbers and (f := detect_field(r.label)) in RATE_FIELDS]
+    if len({h.field for h in hits}) < 4:
+        return False
+    return all(not h.value and not h.rate for h in hits)
 
 
 def parse_blocks(doc: Document) -> list[CostBlock]:
@@ -239,7 +255,8 @@ def parse_blocks(doc: Document) -> list[CostBlock]:
     for row in doc.rows:
         label_norm = normalize(row.label)
         sheet_changed = doc.kind in ("xlsx", "xls") and row.sheet != current_sheet
-        starts = bool(BLOCK_START.search(label_norm)) or bool(TITLE_RE.match(label_norm))
+        # só cabeçalho (linha sem números) abre bloco: o quadro resumo repete "Módulo 1 ... R$ x"
+        starts = (bool(BLOCK_START.search(label_norm)) and not row.numbers) or bool(TITLE_RE.match(label_norm))
         if current is None or sheet_changed or (starts and _has_cost_content(current)):
             if current is not None:
                 blocks.append(current)

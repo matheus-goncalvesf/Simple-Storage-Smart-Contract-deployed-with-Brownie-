@@ -9,7 +9,7 @@ from .draft import build_recurso, build_tese
 from .extractor import extract_path
 from .models import SEVERITY_RANK, VERDICT_RANK, Document
 from .rules_engine import audit_blocks
-from .sheet_parser import detect_context, doc_role, parse_blocks
+from .sheet_parser import detect_context, doc_role, looks_like_blank_template, parse_blocks
 
 
 def audit_documents(
@@ -23,6 +23,9 @@ def audit_documents(
     defaults: dict | None = None,
 ) -> dict:
     blocks_by_doc = {d.name: parse_blocks(d) for d in documents if not d.error}
+    for d in documents:
+        if not d.error and not blocks_by_doc.get(d.name) and looks_like_blank_template(d):
+            d.warnings.append("modelo de planilha em branco (valores zerados): nada para auditar")
     blocks = [b for bs in blocks_by_doc.values() for b in bs]
     ctx = detect_context(documents, blocks, overrides)
     for key, value in (defaults or {}).items():

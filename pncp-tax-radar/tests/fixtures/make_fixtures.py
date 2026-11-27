@@ -257,6 +257,133 @@ def write_scanned_pdf(path: Path) -> Path:
     return path
 
 
+
+# ---------------------------------------------------------------- layout real (modelo de edital de 2026, preenchido)
+
+
+def real_layout_lines(simples: bool = False) -> list[str]:
+    """Reproduz linha a linha o modelo de planilha de um edital real (Anexo IV), preenchido com valores."""
+    sal, peric = 2200.00, 660.00
+    rem = sal + peric
+    enc = [("A INSS", 0.0 if simples else 0.20), ("B Salário Educação", 0.0 if simples else 0.025),
+           ("C RAT 3,0 FAP 1,0", 0.03), ("D SESC ou SESI", 0.0 if simples else 0.015),
+           ("E SENAI ou SENAC", 0.0 if simples else 0.01), ("F SEBRAE", 0.0 if simples else 0.006),
+           ("G INCRA", 0.0 if simples else 0.002), ("H FGTS", 0.08)]
+    enc_rate = sum(r for _, r in enc)
+    enc_vals = [(n, r, rem * r) for n, r in enc]
+    m21 = [("A 13º salário", 0.0833), ("B Adicional de Férias", 0.0278)]
+    m21_vals = [(n, r, rem * r) for n, r in m21]
+    m21_base = sum(v for *_, v in m21_vals)
+    incid = m21_base * enc_rate
+    m21_total = m21_base + incid
+    ben = [("A Transporte", 120.0), ("B Auxílio-Refeição/Alimentação", 480.0)]
+    ben_total = sum(v for _, v in ben)
+    m3 = [("A Aviso Prévio Indenizado", 0.0042), ("B Incidência do FGTS sobre o Aviso Prévio Indenizado", 0.0003),
+          ("C Multa do FGTS sobre o Aviso Prévio Indenizado", 0.0017), ("D Aviso Prévio Trabalhado", 0.0194),
+          ("E Incidência dos encargos do submódulo 2.2 sobre o Aviso Prévio Trabalhado", 0.0071),
+          ("F Multa do FGTS sobre o Aviso Prévio Trabalhado", 0.0008)]
+    m3_vals = [(n, r, rem * r) for n, r in m3]
+    m3_total = sum(v for *_, v in m3_vals)
+    m4 = [("A Substituto na Cobertura de Férias", 0.0833), ("B Substituto na Cobertura das Ausências Legais", 0.0222),
+          ("D Substituto na Cobertura das Ausências por Acidente de Trabalho", 0.0003),
+          ("F Substituto na Cobertura das Ausências por Doença", 0.0055)]
+    m4_vals = [(n, r, rem * r) for n, r in m4]
+    m4_total = sum(v for *_, v in m4_vals)
+    ins = [("A Uniformes (custo mensal por empregado)", 45.0), ("B Materiais (custo mensal por empregado)", 10.0),
+           ("C Equipamentos (custo mensal por empregado)", 38.0)]
+    ins_total = sum(v for _, v in ins)
+    enc_total = sum(v for *_, v in enc_vals)
+    m2_total = m21_total + enc_total + ben_total
+    sub = rem + m2_total + m3_total + m4_total + ins_total
+    ci_r, luc_r = 0.03, 0.06
+    ci = sub * ci_r
+    luc = (sub + ci) * luc_r
+    tax = [("C.1 Tributos PIS", 0.0065), ("C.2 Federais COFINS", 0.03), ("C.3 ISS", 0.05)]
+    t = sum(r for _, r in tax)
+    price = (sub + ci + luc) / (1 - t)
+    tax_vals = [(n, r, price * r) for n, r in tax]
+    m6_total = ci + luc + sum(v for *_, v in tax_vals)
+    pct = lambda r, d=2: br(r * 100) if d == 2 else f"{r * 100:.4f}".replace(".", ",")
+    regime = "Empresa optante pelo Simples Nacional" if simples else "Regime de tributação: Lucro Presumido"
+    L = [
+        "PLANILHA DE CUSTOS E FORMAÇÃO DE PREÇOS", "Processo nº 1850/2026", "Pregão eletrônico: 90007/2026",
+        "Licitante: Segurança Exemplo Ltda - CNPJ 98.765.432/0001-10", regime,
+        "A Data de apresentação da proposta (dia/mês/ano) 10/12/2026", "D Nº de meses de execução contratual 12",
+        "IDENTIFICAÇÃO DO SERVIÇO", "1 Unidade de medida COLABORADORES", "3 Cargo: Vigilante 12x36 diurno armado",
+        "MÃO-DE-OBRA VINCULADA À EXECUÇÃO CONTRATUAL", "1 Tipo do serviço Vigilância patrimonial armada",
+        "4 Categoria profissional", "MÓDULO 01: COMPOSIÇÃO DA REMUNERAÇÃO", "1 Composição da remuneração Valor (R$)",
+        f"A Salário base R$ {br(sal)}", f"B Adicional de periculosidade Sim/Não S 30,00% R$ {br(peric)}",
+        "C Adicional de insalubridade Sim/Não N 0,00% -", f"TOTAL DA REMUNERAÇÃO R$ {br(rem)}",
+        "MÓDULO 02: ENCARGOS E BENEFÍCIOS ANUAIS, MENSAIS E DIÁRIOS",
+        "Submódulo 2.1 - 13º (décimo terceiro) salário e adicional de férias", "Valor",
+        "2.1 13º salário e adicional de férias (%)", "(R$)",
+    ]
+    L += [f"{n} {pct(r)}% R$ {br(v)}" for n, r, v in m21_vals]
+    L += [f"C Incidência do submódulo 2.2 sobre o 13º Salário e Adicional de Férias {pct(incid / rem)}% R$ {br(incid)}",
+          f"TOTAL R$ {br(m21_total)}",
+          "Submódulo 2.2 - Encargos previdenciários (GPS), Fundo de Garantia por Tempo de Serviço (FGTS) e",
+          "outras contribuições", "Valor", "2.2 GPS, FGTS e outras contribuições (%)", "(R$)"]
+    L += [f"{n} {pct(r)}% R$ {br(v)}" for n, r, v in enc_vals]
+    L += [f"TOTAL {pct(enc_rate)}% R$ {br(enc_total)}", "Submódulo 2.3 - Benefícios Mensais e Diários"]
+    L += [f"{n} R$ {br(v)}" for n, v in ben]
+    L += [f"TOTAL R$ {br(ben_total)}", "QUADRO RESUMO DO MÓDULO 2 - ENCARGOS E BENEFÍCIOS ANUAIS, MENSAIS E DIÁRIOS",
+          f"2.1 13º (décimo terceiro) Salário e Adicional de Férias R$ {br(m21_total)}",
+          f"2.2 GPS, FGTS e outras contribuições R$ {br(enc_total)}", f"2.3 Benefícios Mensais e Diários R$ {br(ben_total)}",
+          f"TOTAL R$ {br(m2_total)}", "MÓDULO 03: PROVISÃO PARA RESCISÃO", "Valor", "3 Provisão para Rescisão (%)", "(R$)"]
+    L += [f"{n} {pct(r)}% R$ {br(v)}" for n, r, v in m3_vals]
+    L += [f"TOTAL {pct(m3_total / rem)}% R$ {br(m3_total)}", "MÓDULO 04: CUSTO DE REPOSIÇÃO DO PROFISSIONAL AUSENTE",
+          "Submódulo 4.1 - Ausências Legais"]
+    L += [f"{n} {pct(r)}% R$ {br(v)}" for n, r, v in m4_vals]
+    L += [f"TOTAL {pct(m4_total / rem)}% R$ {br(m4_total)}", "MÓDULO 05: INSUMOS DIVERSOS", "5 Insumos Diversos Valor (R$)"]
+    L += [f"{n} R$ {br(v)}" for n, v in ins]
+    L += [f"TOTAL R$ {br(ins_total)}", "MÓDULO 6: CUSTOS INDIRETOS, TRIBUTOS E LUCRO", "Valor",
+          "6 Custos Indiretos, Tributos e Lucro (%)", "(R$)",
+          f"A Custos indiretos {pct(ci_r, 4)}% R$ {br(ci)}", f"B Lucro {pct(luc_r, 4)}% R$ {br(luc)}",
+          f"C Tributos {pct(t)}%"]
+    for n, r, v in tax_vals:
+        L.append(f"{n} {pct(r)}% R$ {br(v)}")
+        if n.startswith("C.3"):
+            L.append("Municipais")
+    L += ["Outros", "C.4 0,00% R$ 0,00", "Tributos", f"TOTAL R$ {br(m6_total)}",
+          "QUADRO RESUMO DO CUSTO POR EMPREGADO",
+          "Mão-de-obra vinculada à execução contratual (valor por empregado) Valor (R$)",
+          f"A Módulo 1 - Composição da Remuneração R$ {br(rem)}",
+          f"B Módulo 2 - Encargos e Benefícios Anuais, Mensais e Diários R$ {br(m2_total)}",
+          f"C Módulo 3 - Provisão para rescisão R$ {br(m3_total)}",
+          f"D Módulo 4 - Custo de Reposição do Profissional Ausente R$ {br(m4_total)}",
+          f"E Módulo 5 - Insumos Diversos R$ {br(ins_total)}", f"SUBTOTAL (A+B+C+D+E) R$ {br(sub)}",
+          f"F Módulo 6 - Custos indiretos, tributos e lucro R$ {br(m6_total)}",
+          f"VALOR TOTAL POR EMPREGADO R$ {br(price)}", "QUADRO RESUMO - VALOR MENSAL DOS SERVIÇOS",
+          f"R$ {br(price)} 2 R$ {br(price * 2)} 1 R$ {br(price * 2)}", f"Valor mensal dos serviços R$ {br(price * 2)}",
+          f"Valor global da proposta (Valor Mensal x Meses de Execução) R$ {br(price * 24)}"]
+    return L
+
+
+def write_real_layout_pdf(path: Path, simples: bool = False) -> Path:
+    from fpdf import FPDF
+
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Helvetica", size=8)
+    for line in real_layout_lines(simples):
+        pdf.cell(0, 4, line, new_x="LMARGIN", new_y="NEXT")
+    pdf.output(str(path))
+    return path
+
+
+def write_blank_template_pdf(path: Path) -> Path:
+    from fpdf import FPDF
+    import re as _re
+
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Helvetica", size=8)
+    for line in real_layout_lines():
+        blank = _re.sub(r"\d{1,3}(?:\.\d{3})*,\d{2,4}", "0,00", line)
+        pdf.cell(0, 4, blank, new_x="LMARGIN", new_y="NEXT")
+    pdf.output(str(path))
+    return path
+
 # ---------------------------------------------------------------- catálogo
 
 SIMPLES = "Empresa optante pelo Simples Nacional"
@@ -309,6 +436,9 @@ def build_all(out_dir: Path) -> dict[str, Path]:
     files["limpeza_fgts_errado_por_fora_pdf"] = write_pdf(sp["limpeza_fgts_errado_por_fora"], out_dir / "limpeza_fgts_errado_por_fora.pdf")
     files["limpeza_simples_sem_cpp_docx"] = write_docx(sp["limpeza_simples_sem_cpp"], out_dir / "limpeza_simples_sem_cpp.docx")
     files["digitalizado_pdf"] = write_scanned_pdf(out_dir / "digitalizado.pdf")
+    files["layout_real_correto_pdf"] = write_real_layout_pdf(out_dir / "layout_real_vigilancia_correta.pdf")
+    files["layout_real_simples_pdf"] = write_real_layout_pdf(out_dir / "layout_real_vigilancia_simples_sem_cpp.pdf", simples=True)
+    files["modelo_em_branco_pdf"] = write_blank_template_pdf(out_dir / "modelo_em_branco.pdf")
     corrupted = out_dir / "corrompido.xlsx"
     corrupted.write_bytes(b"isto nao e um xlsx \x00\x01\x02" * 50)
     files["corrompido"] = corrupted

@@ -206,3 +206,42 @@ def test_tese_tem_fundamento_e_aviso_de_revisao(fx):
     r = audit_paths([fx["limpeza_simples_sem_cpp"]])
     tese = r["alerts"][0]["tese"]
     assert "Fundamentação:" in tese and "revise com advogado" in tese
+
+
+# ---------------------------------------------------------------- layout real de edital (Anexo IV), preenchido
+
+
+def test_layout_real_correto_nao_gera_alerta(fx):
+    r = audit_paths([fx["layout_real_correto_pdf"]])
+    assert r["alerts"] == []
+    [block] = r["blocks"]
+    assert block["title"] == "Posto: Vigilante 12x36 diurno armado"
+    assert block["gross_up"] == "correto"
+    assert block["category"] == "vigilancia"
+    assert r["context"]["regime"] == "presumido"
+
+
+def test_layout_real_simples_sem_cpp(fx):
+    r = audit_paths([fx["layout_real_simples_pdf"]])
+    a = only(r, "R05")
+    assert (a["severity"], a["verdict"]) == ("ALTA", "FORTE")
+    assert a["impact"] == pytest.approx(0.20 * 2860.00, abs=0.05)
+    assert rule_ids(r) == ["R05"]
+
+
+def test_modelo_em_branco_nao_e_auditado(fx):
+    r = audit_paths([fx["modelo_em_branco_pdf"]])
+    assert r["blocks"] == [] and r["alerts"] == []
+    assert any("modelo de planilha em branco" in w for d in r["documents"] for w in d["warnings"])
+
+
+def test_palavra_das_nao_vira_simples_nacional():
+    from app.sheet_parser import detect_field
+
+    assert detect_field("B Substituto na Cobertura das Ausências Legais") is None
+    assert detect_field("C Multa do FGTS sobre o Aviso Prévio Indenizado") is None
+    assert detect_field("2.2 GPS, FGTS e outras contribuições") is None
+    assert detect_field("F Módulo 6 – Custos indiretos, tributos e lucro") is None
+    assert detect_field("TOTAL") is None
+    assert detect_field("H FGTS") == "fgts"
+    assert detect_field("C.1 Simples Nacional - alíquota efetiva") == "simples"
