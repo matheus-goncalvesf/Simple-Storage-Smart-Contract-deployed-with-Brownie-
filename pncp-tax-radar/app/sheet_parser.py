@@ -58,13 +58,14 @@ MAX_RATE = {
     "incra": 0.05, "fgts": 0.12, "lucro": 0.6, "ci": 0.6,
 }
 
-BLOCK_START = re.compile(r"\bmodulo\s*0?1\b|composicao da remunerac")
+# cabeçalho de início de planilha; notas de rodapé ("incidem sobre o Módulo 1") não contam
+BLOCK_START = re.compile(r"^(?:[a-z0-9.]{1,4}\s*[-–:|]?\s*)?(modulo\s*0?1\b|composicao da remunerac)")
 TITLE_RE = re.compile(r"^(?:[a-z0-9]{1,3}[.)]?\s+)?(posto|funcao|cargo|categoria profissional)(?:\s*/\s*\w+)?\s*[:\-–]\s*(.+)")
 
 CATEGORY_PATTERNS: dict[str, re.Pattern] = {
     "limpeza": re.compile(r"\blimpeza\b|conservacao|\basseio\b|higienizac|servente(?! de obra)"),
     "vigilancia": re.compile(r"vigilancia(?! (sanitaria|epidemiologica|em saude|ambiental))|\bvigilantes?\b|seguranca patrimonial"),
-    "obras": re.compile(r"\bobras?\b|construcao civil|\breforma (predial|de edificac)|engenharia civil|pedreiro|servente de obras"),
+    "obras": re.compile(r"(?<!mao de )(?<!mao-de-)\bobras?\b|construcao civil|\breforma (predial|de edificac)|engenharia civil|pedreiro|servente de obras"),
     "cessao_outros": re.compile(
         r"recepc|recepcionista|copeir|copeiragem|\bmotoristas?\b|\bportari|\bporteir|apoio administrativo|"
         r"auxiliar administrativo|assistente administrativo|telefonista|\bgarco|almoxarif|secretariad|"
@@ -256,7 +257,7 @@ def parse_blocks(doc: Document) -> list[CostBlock]:
         label_norm = normalize(row.label)
         sheet_changed = doc.kind in ("xlsx", "xls") and row.sheet != current_sheet
         # só cabeçalho (linha sem números) abre bloco: o quadro resumo repete "Módulo 1 ... R$ x"
-        starts = (bool(BLOCK_START.search(label_norm)) and not row.numbers) or bool(TITLE_RE.match(label_norm))
+        starts = (bool(BLOCK_START.match(label_norm)) and not row.numbers) or bool(TITLE_RE.match(label_norm))
         if current is None or sheet_changed or (starts and _has_cost_content(current)):
             if current is not None:
                 blocks.append(current)
@@ -271,7 +272,9 @@ def parse_blocks(doc: Document) -> list[CostBlock]:
             current.title = f"Posto: {current.posto}"
         name = detect_field(row.label)
         if name and row.numbers:
-            current.hits.setdefault(name, []).append(read_hit(row, name))
+            hit = read_hit(row, name)
+            if hit.rate is not None or hit.value is not None:  # cabeçalho com só um código de item não é rubrica
+                current.hits.setdefault(name, []).append(hit)
     if current is not None:
         blocks.append(current)
     result = [b for b in blocks if b.relevant_count() >= 2 and b.valued_count() >= 2]
@@ -321,10 +324,11 @@ def detect_category(text: str) -> tuple[str | None, str]:
 def block_category(block: CostBlock, ctx: CaseContext) -> str | None:
     if "categoria" in ctx.overrides:
         return ctx.category
-    if block.posto:
-        cat, _ = detect_category(block.posto)
-        if cat:
-            return cat
+    for name in (block.posto, block.title):  # cargo declarado ou, em xlsx, o nome da aba
+        if name:
+            cat, _ = detect_category(name)
+            if cat:
+                return cat
     return ctx.category
 
 

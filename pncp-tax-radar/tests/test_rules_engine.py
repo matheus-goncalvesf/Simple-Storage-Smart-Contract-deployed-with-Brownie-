@@ -245,3 +245,57 @@ def test_palavra_das_nao_vira_simples_nacional():
     assert detect_field("TOTAL") is None
     assert detect_field("H FGTS") == "fgts"
     assert detect_field("C.1 Simples Nacional - alíquota efetiva") == "simples"
+
+
+# ---------------------------------------------------------------- planilha real do PNCP (estimativa de edital, 9 cargos)
+
+
+def test_planilha_real_pncp_9_cargos():
+    from pathlib import Path
+
+    r = audit_paths([Path(__file__).parent / "fixtures" / "real_pncp_apoio_9_cargos.xlsx"])
+    assert r["alerts"] == []
+    assert len(r["blocks"]) == 9
+    assert all(b["gross_up"] == "correto" for b in r["blocks"])
+    copeiro = next(b for b in r["blocks"] if b["title"].startswith("Copeiro"))
+    assert copeiro["price"] == pytest.approx(7284.24, abs=0.5)
+    assert copeiro["lucro"] == pytest.approx(317.21, abs=0.5)
+    assert copeiro["category"] == "cessao_outros"
+
+
+def test_mao_de_obra_nao_e_obra_de_construcao():
+    from app.radar import match_segments
+    from app.sheet_parser import detect_category
+
+    assert detect_category("Tipo de serviço: Mão de Obra; Copeira")[0] == "cessao_outros"
+    assert match_segments("Contratação de mão de obra terceirizada de copeiragem", ["obras"]) == []
+    assert match_segments("Execução de obra de reforma da escola", ["obras"]) == ["obras"]
+
+
+def test_planilha_real_com_erros_injetados(tmp_path):
+    """Mesma planilha real, com INSS zerado no Copeiro e ISS de 1,5% na Recepcionista."""
+    from pathlib import Path
+
+    import openpyxl
+
+    wb = openpyxl.load_workbook(Path(__file__).parent / "fixtures" / "real_pncp_apoio_9_cargos.xlsx")
+    copeiro = next(ws for ws in wb.worksheets if ws.title.startswith("Copeiro"))
+    recep = next(ws for ws in wb.worksheets if ws.title.startswith("Recepcionista"))
+    assert copeiro["B34"].value.strip() == "INSS"
+    copeiro["D34"] = 0
+    iss_row = next(c.row for c in recep["B"] if isinstance(c.value, str) and c.value.strip().upper() == "ISSQN")
+    recep[f"D{iss_row}"] = 0.015
+    target = tmp_path / "planilha_com_erros.xlsx"
+    wb.save(target)
+
+    r = audit_paths([target])
+    by_block = {}
+    for a in r["alerts"]:
+        by_block.setdefault(a["block"].split(" (")[0], []).append(a)
+    assert set(by_block) == {"Copeiro", "Recepcionista Executiva"}
+    inss = by_block["Copeiro"][0]
+    assert inss["rule_id"] == "R05" and inss["severity"] == "ALTA"
+    assert inss["impact"] > inss["lucro"]
+    iss = by_block["Recepcionista Executiva"][0]
+    assert iss["rule_id"] == "R03"
+    assert iss["impact"] == pytest.approx(0.005 * iss["preco"], rel=0.01)

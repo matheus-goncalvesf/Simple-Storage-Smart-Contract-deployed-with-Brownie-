@@ -23,7 +23,7 @@ SEGMENTS: dict[str, tuple[str, re.Pattern]] = {
         r"recepc|copeir|portaria|porteir|apoio administrativo|auxiliar administrativo|telefonista|motorista|"
         r"brigadista|maqueiro|ascensorista")),
     "terceirizacao": ("Terceirização / mão de obra", re.compile(r"mao de obra|dedicacao exclusiva|terceiriz")),
-    "obras": ("Obras e engenharia", re.compile(r"\bobras?\b|construcao|reforma|engenharia|pavimentac")),
+    "obras": ("Obras e engenharia", re.compile(r"(?<!mao de )(?<!mao-de-)\bobras?\b|construcao|reforma|engenharia|pavimentac")),
 }
 GOODS = re.compile(
     r"\baquisic\w*|\bcompras? de\b|fornecimento de (bens|materia|produto|equipamento)|materia(l|is) de (limpeza|consumo|expediente)"
