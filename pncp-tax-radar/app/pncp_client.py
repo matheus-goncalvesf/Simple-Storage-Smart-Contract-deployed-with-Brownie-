@@ -213,12 +213,13 @@ class PNCPClient:
                 return b"".join(chunks), resp.headers
 
         data, headers = await self._with_retry(f"download {url}", op)
-        name = _filename_from_headers(headers) or suggested_name or "arquivo"
-        name = safe_filename(name)
-        ext = Path(name).suffix.lower()
-        sniffed = sniff_extension(data, ext or ".bin")
-        if not ext or (ext not in (".xlsx", ".xls", ".pdf", ".docx", ".zip", ".csv", ".txt", ".rar", ".7z", ".doc", ".xlsm") and sniffed != ".bin"):
-            name = f"{Path(name).stem}{sniffed}"
+        known = (".xlsx", ".xls", ".pdf", ".docx", ".zip", ".csv", ".txt", ".rar", ".7z", ".doc", ".xlsm", ".odt", ".ods")
+        header_name = _filename_from_headers(headers)
+        # o título do PNCP ("Modelo-Planilha-de-Custos...") diz mais que o nome técnico do servidor ("883077.xlsx")
+        name = safe_filename(suggested_name or header_name or "arquivo")
+        if Path(name).suffix.lower() not in known:
+            header_ext = Path(header_name).suffix.lower() if header_name else ""
+            name = f"{name}{header_ext if header_ext in known else sniff_extension(data, '.bin')}"
         path = dest_dir / name
         i = 1
         while path.exists():

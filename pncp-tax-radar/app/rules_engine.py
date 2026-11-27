@@ -81,10 +81,40 @@ def _first_total_after(block: CostBlock, pos: int) -> float | None:
     return h.value if h and h.value else None
 
 
+LEGAL_NOMINAL = {
+    "pis": (0.0065, 0.0165),
+    "cofins": (0.03, 0.076),
+    "pis_cofins": (CUMULATIVO, NAO_CUMULATIVO),
+    "iss": tuple(x / 1000 for x in range(20, 51, 5)),
+}
+
+
+def _rates_shown_over_base(hits: list[FieldHit]) -> list[float] | None:
+    """Algumas planilhas exibem a alíquota como valor ÷ custo antes dos tributos, ou seja, nominal ÷ (1 − t).
+
+    Se as alíquotas exibidas convertidas assim batem com as alíquotas legais, o cálculo foi feito por dentro
+    (correto) e as alíquotas nominais são as convertidas.
+    """
+    s = sum(h.rate for h in hits)
+    nominal = [h.rate / (1 + s) for h in hits]
+    for h, n in zip(hits, nominal):
+        legal = LEGAL_NOMINAL.get(h.field)
+        if legal is None or not any(abs(n - x) <= 0.0002 for x in legal):
+            return None
+    return nominal
+
+
 def analyze_gross_up(block: CostBlock) -> GrossUp:
     hits = tax_hits(block)
     if not hits:
         return GrossUp(status="sem_tributos", price=_first_total_after(block, -1))
+    nominal = _rates_shown_over_base(hits)
+    if nominal:
+        for h, n in zip(hits, nominal):
+            h.rate = n  # as regras seguintes passam a ver a alíquota legal
+        T = sum(h.value for h in hits)
+        price = median(h.value / h.rate for h in hits)
+        return GrossUp(status="correto", price=price, base=price - T, taxes=T, rate=sum(nominal), impact=0.0, hits=hits)
     t = sum(h.rate for h in hits)
     T = sum(h.value for h in hits)
     bases = [h.value / h.rate for h in hits]
@@ -111,6 +141,10 @@ def analyze_gross_up(block: CostBlock) -> GrossUp:
                 g.status = "por_fora"
             elif b_minus and not b_x:
                 g.status = "correto"
+        divides = [h.formula for h in hits if h.formula and "/" in h.formula]
+        if g.status == "por_fora" and divides:
+            # a fórmula do tributo divide por algo (provável 1 − t): sem prova pelos valores, não acusa
+            g.status = "indeterminado"
         if g.status == "por_fora":
             g.price, g.base = X + T, X
         elif g.status == "correto":

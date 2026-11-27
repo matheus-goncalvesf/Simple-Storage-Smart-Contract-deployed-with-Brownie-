@@ -83,7 +83,7 @@ REGIME_NEAR = re.compile(
 REGIME_ANY = re.compile(r"simples nacional|lucro presumido|lucro real")
 REGIME_MAP = {"simples nacional": "simples", "lucro presumido": "presumido", "lucro real": "real"}
 PROPOSAL_NAME = re.compile(r"propost|planilha|custo|preco|composic", re.I)
-ORGAO_DOC_NAME = re.compile(r"edital|termo[ _-]*de[ _-]*refer|\btr\b|minuta|estimativ|referencia|anexo[ _-]*i\b", re.I)
+ORGAO_DOC_NAME = re.compile(r"edital|termo[ _-]*de[ _-]*refer|\btr\b|minuta|estimativ|referencia|anexo[ _-]*i\b|modelo", re.I)
 
 
 def doc_role(name: str) -> str:

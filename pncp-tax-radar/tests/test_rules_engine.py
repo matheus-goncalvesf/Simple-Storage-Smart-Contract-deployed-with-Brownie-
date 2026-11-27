@@ -299,3 +299,14 @@ def test_planilha_real_com_erros_injetados(tmp_path):
     iss = by_block["Recepcionista Executiva"][0]
     assert iss["rule_id"] == "R03"
     assert iss["impact"] == pytest.approx(0.005 * iss["preco"], rel=0.01)
+
+
+def test_planilha_real_com_aliquota_exibida_sobre_a_base():
+    """Planilha real do PNCP: PIS aparece como 0,71% (= 0,65% ÷ 0,9135) porque a coluna mostra valor ÷ custo."""
+    from pathlib import Path
+
+    r = audit_paths([Path(__file__).parent / "fixtures" / "real_pncp_modelo_lucro_presumido.xlsx"])
+    assert [a["rule_id"] for a in r["alerts"]] == []
+    [block] = [b for b in r["blocks"] if b["gross_up"] != "sem_tributos"]
+    assert block["gross_up"] == "correto"
+    assert block["price"] == pytest.approx(4673.98 + 442.58, abs=0.5)
