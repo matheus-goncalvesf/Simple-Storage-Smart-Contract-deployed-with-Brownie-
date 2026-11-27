@@ -28,6 +28,7 @@ from .models import SEVERITY_RANK
 from .pipeline import JobManager, ScanParams, run_inbox_scan, run_pncp_scan
 from .pncp_client import MODALIDADES, PNCPClient, safe_filename
 from .radar import SEGMENTS, RadarConfig, RadarScheduler, refresh_status, start_radar_job
+from .sweep import run_proposal_sweep
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
@@ -136,6 +137,18 @@ def create_app(settings: Settings | None = None, client_factory: Callable[[], PN
             return running
         return jobs.start("inbox", {"force": force}, lambda job: run_inbox_scan(job, db, settings.inbox_dir, force))
 
+    def start_sweep_job():
+        running = jobs.running("sweep")
+        if running:
+            return running
+        cfg = RadarConfig.load(db)
+
+        async def runner(job):
+            async with client_factory() as client:
+                await run_proposal_sweep(job, client, db, cfg, settings.downloads_dir / "varredura")
+
+        return jobs.start("sweep", {"segments": cfg.segments}, runner)
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         settings.inbox_dir.mkdir(parents=True, exist_ok=True)
@@ -143,7 +156,9 @@ def create_app(settings: Settings | None = None, client_factory: Callable[[], PN
         watcher = InboxWatcher(inbox_has_pending, start_inbox_job, settings.watch_interval) if settings.watch_inbox else None
         if watcher:
             watcher.start()
-        scheduler = RadarScheduler(db, lambda: start_radar_job(jobs, db, client_factory)) if settings.radar_auto else None
+        scheduler = RadarScheduler(
+            db, lambda: start_radar_job(jobs, db, client_factory), start_sweep=start_sweep_job,
+        ) if settings.radar_auto else None
         if scheduler:
             scheduler.start()
         yield
@@ -241,6 +256,15 @@ def create_app(settings: Settings | None = None, client_factory: Callable[[], PN
     @app.post("/api/radar/scan")
     async def radar_scan():
         return start_radar_job(jobs, db, client_factory).snapshot()
+
+    @app.post("/api/sweep/scan")
+    async def sweep_scan():
+        return start_sweep_job().snapshot()
+
+    @app.get("/api/sweep")
+    async def sweep_status():
+        running = jobs.running("sweep")
+        return {"last_run": db.setting_get("sweep_last_run"), "running_job": running.id if running else None}
 
     @app.get("/api/opportunities")
     async def opportunities(status: str | None = None, segmento: str | None = None, uf: str | None = None):

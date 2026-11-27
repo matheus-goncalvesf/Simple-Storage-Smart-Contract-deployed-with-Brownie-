@@ -242,11 +242,20 @@ async def run_radar_scan(job: Job, client: PNCPClient, db: Database, cfg: RadarC
 class RadarScheduler:
     """Dispara a varredura do radar no intervalo configurado, sem sobrepor execuções."""
 
-    def __init__(self, db: Database, start_job: Callable[[], Job | None], check_every: float = 60.0):
+    def __init__(self, db: Database, start_job: Callable[[], Job | None], check_every: float = 60.0,
+                 start_sweep: Callable[[], Job | None] | None = None, sweep_hours: float = 24.0):
         self.db = db
         self.start_job = start_job
+        self.start_sweep = start_sweep
+        self.sweep_hours = sweep_hours
         self.check_every = check_every
         self._task: asyncio.Task | None = None
+
+    def sweep_due(self, now: datetime | None = None) -> bool:
+        if not RadarConfig.load(self.db).enabled:
+            return False
+        last = (self.db.setting_get("sweep_last_run") or {}).get("at")
+        return not last or (now or datetime.now()) - datetime.fromisoformat(last) >= timedelta(hours=self.sweep_hours)
 
     def due(self, now: datetime | None = None) -> bool:
         cfg = RadarConfig.load(self.db)
@@ -275,6 +284,8 @@ class RadarScheduler:
         while True:
             if self.due():
                 self.start_job()
+            if self.start_sweep and self.sweep_due():
+                self.start_sweep()
             await asyncio.sleep(self.check_every)
 
 

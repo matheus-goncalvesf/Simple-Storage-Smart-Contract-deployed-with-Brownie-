@@ -290,6 +290,17 @@ class PNCPClient:
             return None
         return self.pncp_base + ENDPOINTS["arquivos"].format(cnpj=cnpj, ano=ano, sequencial=sequencial) + f"/{seq_doc}"
 
+    async def list_contratos(self, data_inicial: date, data_final: date, pagina: int = 1, tamanho: int = 500) -> dict:
+        data = await self.get_json(self.consulta_base + "/v1/contratos", {
+            "dataInicial": data_inicial.strftime("%Y%m%d"), "dataFinal": data_final.strftime("%Y%m%d"),
+            "pagina": pagina, "tamanhoPagina": tamanho,
+        })
+        return data or {"data": [], "totalPaginas": 0, "paginasRestantes": 0}
+
+    async def list_arquivos_contrato(self, cnpj: str, ano: int, sequencial: int) -> list[dict]:
+        data = await self.get_json(f"{self.pncp_base}/v1/orgaos/{cnpj}/contratos/{ano}/{sequencial}/arquivos")
+        return data if isinstance(data, list) else []
+
     async def list_itens(self, cnpj: str, ano: int, sequencial: int) -> list[dict]:
         url = self.pncp_base + ENDPOINTS["itens"].format(cnpj=cnpj, ano=ano, sequencial=sequencial)
         data = await self.get_json(url, {"pagina": 1, "tamanhoPagina": 100})

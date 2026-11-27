@@ -83,7 +83,9 @@
         <div class="flex gap-2">
           <button id="btn-radar-config" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50">Configurar</button>
           <button id="btn-radar-scan" class="rounded-md bg-blue-600 px-4 py-1.5 text-sm text-white font-medium hover:bg-blue-700 disabled:opacity-50">Buscar agora</button>
+          <button id="btn-sweep" class="rounded-md bg-slate-900 px-4 py-1.5 text-sm text-white font-medium hover:bg-slate-700 disabled:opacity-50" title="Baixa e audita sozinho as propostas e planilhas de contratadas publicadas no PNCP">Varrer propostas publicadas</button>
         </div>
+        <p id="sweep-info" class="w-full text-xs text-slate-500"></p>
         <div id="radar-progress" class="hidden w-full">
           <div class="h-2 w-full rounded-full bg-slate-200 overflow-hidden"><div id="radar-bar" class="h-2 bg-blue-600 transition-all" style="width:0%"></div></div>
           <p id="radar-stage" class="mt-1 text-xs text-slate-600"></p>
@@ -420,6 +422,7 @@ async function initOpportunities() {
   $("#o-seg").replaceChildren(h("option", { value: "" }, "Todos os segmentos"), ...segs.map(([k, l]) => h("option", { value: k }, l)));
   $("#o-uf").replaceChildren(h("option", { value: "" }, "Todas as UFs"), ...state.meta.ufs.map((u) => h("option", { value: u }, u)));
   renderRadarInfo();
+  renderSweepInfo();
   if (state.radar.running_job) followRadarJob(state.radar.running_job);
 }
 
@@ -449,6 +452,24 @@ function followRadarJob(jobId) {
     }
   });
 }
+
+async function renderSweepInfo() {
+  const s = await api("/api/sweep");
+  const l = s.last_run;
+  $("#sweep-info").textContent = l ? `Varredura de propostas publicadas: ${fmtDay(l.at)}` + (l.contratos !== undefined ? ` · ${l.contratos} contratos lidos, ${l.terceirizacao} de terceirização, ${l.planilhas} planilha(s) auditada(s) (veja em Resultados)` : " · em andamento") : "Varredura de propostas publicadas: ainda não rodou (roda sozinha uma vez por dia).";
+  if (s.running_job) followSweep(s.running_job);
+}
+function followSweep(jobId) {
+  $("#btn-sweep").disabled = true;
+  $("#radar-progress").classList.remove("hidden");
+  watchJob(jobId, (ev) => {
+    const pct = ev.total ? Math.round((ev.done / ev.total) * 100) : 5;
+    $("#radar-bar").style.width = `${ev.type === "done" ? 100 : pct}%`;
+    $("#radar-stage").textContent = ev.stage;
+    if (["done", "cancelled", "error"].includes(ev.type)) { $("#btn-sweep").disabled = false; renderSweepInfo(); }
+  });
+}
+$("#btn-sweep").addEventListener("click", async () => followSweep((await api("/api/sweep/scan", { method: "POST" })).id));
 
 $("#btn-radar-scan").addEventListener("click", async () => {
   const job = await api("/api/radar/scan", { method: "POST" });
